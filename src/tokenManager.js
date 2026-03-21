@@ -6,7 +6,19 @@ const { HttpsProxyAgent } = httpsProxyAgent;
 
 // OpenAI OAuth 配置
 const TOKEN_URL = 'https://auth.openai.com/oauth/token';
-const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
+const DEFAULT_CLIENT_ID = 'app_LlGpXReQgckcGGUo2JrYvtJK';
+
+/**
+ * 从 JWT access_token 中提取 client_id
+ */
+function extractClientId(accessToken) {
+  try {
+    const payload = JSON.parse(Buffer.from(accessToken.split('.')[1], 'base64').toString());
+    return payload.client_id || DEFAULT_CLIENT_ID;
+  } catch {
+    return DEFAULT_CLIENT_ID;
+  }
+}
 
 // 代理配置
 const PROXY_URL = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
@@ -71,8 +83,9 @@ class TokenManager {
     console.log('正在刷新 token...');
 
     try {
+      const clientId = extractClientId(this.tokenData.access_token);
       const params = new URLSearchParams({
-        client_id: CLIENT_ID,
+        client_id: clientId,
         grant_type: 'refresh_token',
         refresh_token: this.tokenData.refresh_token,
         scope: 'openid profile email'
