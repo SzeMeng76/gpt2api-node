@@ -2,7 +2,8 @@ version: '3.8'
 
 services:
   gpt2api:
-    build: .
+    image: ghcr.io/szemeng76/gpt2api-node:latest
+    # build: .  # Uncomment to build locally instead of pulling from GHCR
     container_name: gpt2api-node
     restart: unless-stopped
     ports:
