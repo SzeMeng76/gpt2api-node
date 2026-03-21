@@ -392,7 +392,7 @@ class ProxyHandler {
       }
 
       // 转换为 OpenAI 格式
-      const transformed = this.transformNonStreamResponse(finalResponse, openaiRequest.model);
+      const transformed = this.transformResponse(finalResponse, openaiRequest.model, false);
       res.json(transformed);
 
     } catch (error) {
