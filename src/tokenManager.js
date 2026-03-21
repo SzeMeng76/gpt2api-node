@@ -60,8 +60,10 @@ class TokenManager {
   async saveToken(tokenData) {
     try {
       this.tokenData = tokenData;
-      await fs.writeFile(this.tokenFilePath, JSON.stringify(tokenData, null, 2), 'utf-8');
-      console.log('✓ Token 已保存到文件');
+      if (this.tokenFilePath) {
+        await fs.writeFile(this.tokenFilePath, JSON.stringify(tokenData, null, 2), 'utf-8');
+        console.log('✓ Token 已保存到文件');
+      }
     } catch (error) {
       console.error(`保存 token 文件失败: ${error.message}`);
     }

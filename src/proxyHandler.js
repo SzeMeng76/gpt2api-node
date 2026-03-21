@@ -347,7 +347,7 @@ class ProxyHandler {
       const openaiRequest = req.body;
       // console.log('收到请求:', JSON.stringify(openaiRequest, null, 2));
       
-      const codexRequest = this.transformRequest({ ...openaiRequest, stream: false });
+      const codexRequest = this.transformRequest({ ...openaiRequest, stream: true });
       // console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
       
       const accessToken = await this.tokenManager.getValidToken();
