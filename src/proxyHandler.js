@@ -418,7 +418,7 @@ class ProxyHandler {
   async handlePassthrough(req, res) {
     try {
       const accessToken = await this.tokenManager.getValidToken();
-      const requestBody = { ...req.body, stream: true }; // Codex API requires stream: true
+      const requestBody = { instructions: '', ...req.body, stream: true }; // Codex API requires stream: true and instructions
       const clientWantsStream = req.body.stream !== false;
 
       const headers = {
