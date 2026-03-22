@@ -441,7 +441,6 @@ class ProxyHandler {
       );
 
       let usage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
-      let fullData = ''; // Accumulate for non-stream clients
 
       if (clientWantsStream) {
         res.setHeader('Content-Type', 'text/event-stream');
@@ -450,35 +449,35 @@ class ProxyHandler {
       }
 
       return new Promise((resolve, reject) => {
+        let buffer = '';
+
         response.data.on('data', (chunk) => {
           const text = chunk.toString();
           if (clientWantsStream) {
             res.write(text);
-          } else {
-            fullData += text;
           }
+          buffer += text;
 
-          // Capture usage from response.completed event
-          if (text.includes('response.completed')) {
-            for (const line of text.split('\n')) {
-              if (line.trim().startsWith('data:')) {
-                try {
-                  const parsed = JSON.parse(line.slice(5).trim());
-                  if (parsed.type === 'response.completed') {
-                    const u = parsed.response?.usage || {};
-                    usage = {
-                      input_tokens: u.input_tokens || 0,
-                      output_tokens: u.output_tokens || 0,
-                      total_tokens: u.total_tokens || 0
-                    };
-                    if (!clientWantsStream) {
-                      // Return the completed response as JSON for non-stream clients
-                      res.json(parsed);
-                    }
-                  }
-                } catch (e) {}
+          // Process complete lines from buffer for usage/non-stream response
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim().startsWith('data:')) continue;
+            try {
+              const parsed = JSON.parse(line.slice(5).trim());
+              if (parsed.type === 'response.completed') {
+                const u = parsed.response?.usage || {};
+                usage = {
+                  input_tokens: u.input_tokens || 0,
+                  output_tokens: u.output_tokens || 0,
+                  total_tokens: u.total_tokens || 0
+                };
+                if (!clientWantsStream && !res.headersSent) {
+                  res.json(parsed);
+                }
               }
-            }
+            } catch (e) {}
           }
         });
 
