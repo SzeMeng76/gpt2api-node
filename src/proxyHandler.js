@@ -432,6 +432,8 @@ class ProxyHandler {
 
       headers['Accept'] = 'text/event-stream';
 
+      console.log('[Passthrough] Request body:', JSON.stringify(requestBody).slice(0, 500));
+
       const response = await axios.post(
         `${CODEX_BASE_URL}/responses`,
         requestBody,
@@ -498,8 +500,29 @@ class ProxyHandler {
 
     } catch (error) {
       const status = error.response?.status || 500;
-      const message = error.response?.data?.error?.message || error.message;
       const retryable = RETRYABLE_STATUS.has(status);
+
+      // When responseType is 'stream', error.response.data is a stream — read it
+      if (error.response?.data && typeof error.response.data.on === 'function') {
+        return new Promise((_, reject) => {
+          let body = '';
+          error.response.data.on('data', (chunk) => { body += chunk.toString(); });
+          error.response.data.on('end', () => {
+            let message = error.message;
+            try {
+              const parsed = JSON.parse(body);
+              message = parsed.error?.message || parsed.message || body;
+            } catch (e) {
+              message = body || error.message;
+            }
+            console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
+            reject(new ProxyError(message, status, retryable));
+          });
+          error.response.data.on('error', () => reject(new ProxyError(error.message, status, retryable)));
+        });
+      }
+
+      const message = error.response?.data?.error?.message || error.message;
       console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
       throw new ProxyError(message, status, retryable);
     }
