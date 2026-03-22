@@ -411,6 +411,99 @@ class ProxyHandler {
       throw new ProxyError(message, status, retryable);
     }
   }
+
+  /**
+   * 直通转发 /v1/responses — 不做格式转换，供 Codex CLI 直接接入
+   */
+  async handlePassthrough(req, res) {
+    try {
+      const accessToken = await this.tokenManager.getValidToken();
+      const isStream = req.body.stream !== false;
+
+      const headers = {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'User-Agent': CODEX_USER_AGENT,
+        'Version': CODEX_CLIENT_VERSION,
+        'Openai-Beta': 'responses=experimental',
+        'Session_id': this.generateSessionId()
+      };
+
+      if (isStream) {
+        headers['Accept'] = 'text/event-stream';
+
+        const response = await axios.post(
+          `${CODEX_BASE_URL}/responses`,
+          req.body,
+          { headers, responseType: 'stream', timeout: 300000 }
+        );
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+
+        let usage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+
+        return new Promise((resolve, reject) => {
+          response.data.on('data', (chunk) => {
+            const text = chunk.toString();
+            res.write(text);
+
+            // Capture usage from response.completed event
+            if (text.includes('response.completed')) {
+              for (const line of text.split('\n')) {
+                if (line.trim().startsWith('data:')) {
+                  try {
+                    const parsed = JSON.parse(line.slice(5).trim());
+                    if (parsed.type === 'response.completed') {
+                      const u = parsed.response?.usage || {};
+                      usage = {
+                        input_tokens: u.input_tokens || 0,
+                        output_tokens: u.output_tokens || 0,
+                        total_tokens: u.total_tokens || 0
+                      };
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+          });
+
+          response.data.on('end', () => {
+            res.end();
+            resolve(usage);
+          });
+
+          response.data.on('error', (error) => {
+            res.end();
+            reject(new ProxyError(error.message, 500, true));
+          });
+        });
+      } else {
+        const response = await axios.post(
+          `${CODEX_BASE_URL}/responses`,
+          req.body,
+          { headers, timeout: 300000 }
+        );
+
+        res.json(response.data);
+
+        // Extract usage if available
+        const u = response.data?.usage || {};
+        return {
+          input_tokens: u.input_tokens || 0,
+          output_tokens: u.output_tokens || 0,
+          total_tokens: u.total_tokens || 0
+        };
+      }
+    } catch (error) {
+      const status = error.response?.status || 500;
+      const message = error.response?.data?.error?.message || error.message;
+      const retryable = RETRYABLE_STATUS.has(status);
+      console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
+      throw new ProxyError(message, status, retryable);
+    }
+  }
 }
 
 export default ProxyHandler;

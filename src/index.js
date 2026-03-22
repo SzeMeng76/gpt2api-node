@@ -243,6 +243,87 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
   }
 });
 
+// Codex responses 直通接口 — 供 Codex CLI 直接接入
+app.post('/v1/responses', authenticateApiKey, async (req, res) => {
+  const model = req.body.model || 'unknown';
+  const apiKeyId = req.apiKey?.id || null;
+  const triedTokenIds = new Set();
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const result = getAvailableTokenManager(triedTokenIds);
+    if (!result) break;
+
+    const { manager, tokenId } = result;
+    triedTokenIds.add(tokenId);
+
+    try {
+      const proxyHandler = new ProxyHandler(manager);
+      const usage = await proxyHandler.handlePassthrough(req, res);
+
+      Token.updateUsage(tokenId, true);
+      if (usage && usage.total_tokens > 0) {
+        const token = Token.findById(tokenId);
+        Token.updateQuota(tokenId, {
+          total: token?.quota_total || 0,
+          used: (token?.quota_used || 0) + usage.total_tokens,
+          remaining: Math.max(0, (token?.quota_remaining || 0) - usage.total_tokens)
+        });
+      }
+      ApiLog.create({
+        api_key_id: apiKeyId,
+        token_id: tokenId,
+        model,
+        endpoint: '/v1/responses',
+        status_code: 200,
+        error_message: null,
+        input_tokens: usage?.input_tokens || 0,
+        output_tokens: usage?.output_tokens || 0,
+        total_tokens: usage?.total_tokens || 0
+      });
+      return;
+
+    } catch (error) {
+      lastError = error;
+      Token.updateUsage(tokenId, false);
+
+      const retryable = error instanceof ProxyError ? error.retryable : false;
+      const status = error instanceof ProxyError ? error.status : 500;
+
+      console.error(`[Attempt ${attempt}/${MAX_RETRIES}] Token ${tokenId} failed [${status}]: ${error.message}`);
+
+      if (!retryable || attempt >= MAX_RETRIES) break;
+
+      if (status === 401 || status === 403) {
+        try {
+          await manager.refreshToken();
+          triedTokenIds.delete(tokenId);
+        } catch (refreshErr) {
+          console.error(`Token ${tokenId} refresh failed: ${refreshErr.message}`);
+        }
+      }
+
+      if (RETRY_DELAY_MS > 0) {
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+      }
+    }
+  }
+
+  const status = lastError instanceof ProxyError ? lastError.status : 500;
+  const message = lastError?.message || 'No available tokens';
+
+  ApiLog.create({
+    api_key_id: apiKeyId, token_id: null, model,
+    endpoint: '/v1/responses', status_code: status, error_message: message
+  });
+
+  if (!res.headersSent) {
+    res.status(status).json({
+      error: { message, type: 'proxy_error', code: status }
+    });
+  }
+});
+
 // 模型列表接口（公开）
 app.get('/v1/models', (req, res) => {
   res.json({
