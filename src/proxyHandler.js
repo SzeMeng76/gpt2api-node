@@ -4,6 +4,19 @@ const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const CODEX_CLIENT_VERSION = '0.101.0';
 const CODEX_USER_AGENT = 'codex_cli_rs/0.101.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464';
 
+const RETRYABLE_STATUS = new Set([401, 403, 429, 500, 502, 503, 504]);
+
+/**
+ * Proxy error with retryable flag
+ */
+export class ProxyError extends Error {
+  constructor(message, status = 500, retryable = false) {
+    super(message);
+    this.status = status;
+    this.retryable = retryable;
+  }
+}
+
 /**
  * 代理处理器
  */
@@ -299,43 +312,11 @@ class ProxyHandler {
       });
 
     } catch (error) {
-      console.error('代理请求失败:', error.message);
-      if (error.response) {
-        console.error('响应状态:', error.response.status);
-        console.error('响应头:', error.response.headers);
-        
-        // 尝试读取响应数据
-        if (error.response.data) {
-          if (typeof error.response.data === 'string') {
-            console.error('响应数据:', error.response.data);
-          } else if (error.response.data.on) {
-            // 如果是流，尝试读取
-            let data = '';
-            error.response.data.on('data', chunk => {
-              data += chunk.toString();
-            });
-            error.response.data.on('end', () => {
-              console.error('响应数据:', data);
-            });
-          } else {
-            try {
-              console.error('响应数据:', JSON.stringify(error.response.data));
-            } catch (e) {
-              console.error('响应数据类型:', typeof error.response.data);
-            }
-          }
-        }
-      }
-      
-      if (!res.headersSent) {
-        res.status(error.response?.status || 500).json({
-          error: {
-            message: error.response?.data?.error?.message || error.message,
-            type: 'proxy_error',
-            code: error.response?.status || 500
-          }
-        });
-      }
+      const status = error.response?.status || 500;
+      const message = error.response?.data?.error?.message || error.message;
+      const retryable = RETRYABLE_STATUS.has(status);
+      console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
+      throw new ProxyError(message, status, retryable);
     }
   }
 
@@ -396,26 +377,11 @@ class ProxyHandler {
       res.json(transformed);
 
     } catch (error) {
-      console.error('代理请求失败:', error.message);
-      if (error.response) {
-        console.error('响应状态:', error.response.status);
-        console.error('响应头:', error.response.headers);
-        try {
-          console.error('响应数据:', typeof error.response.data === 'string' 
-            ? error.response.data 
-            : JSON.stringify(error.response.data));
-        } catch (e) {
-          console.error('响应数据无法序列化');
-        }
-      }
-      
-      res.status(error.response?.status || 500).json({
-        error: {
-          message: error.response?.data?.error?.message || error.message,
-          type: 'proxy_error',
-          code: error.response?.status || 500
-        }
-      });
+      const status = error.response?.status || 500;
+      const message = error.response?.data?.error?.message || error.message;
+      const retryable = RETRYABLE_STATUS.has(status);
+      console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
+      throw new ProxyError(message, status, retryable);
     }
   }
 }

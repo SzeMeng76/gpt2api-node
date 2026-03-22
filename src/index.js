@@ -9,6 +9,7 @@ import { initDatabase } from './config/database.js';
 import { Token, ApiLog } from './models/index.js';
 import TokenManager from './tokenManager.js';
 import ProxyHandler from './proxyHandler.js';
+import { ProxyError } from './proxyHandler.js';
 import { authenticateApiKey, authenticateAdmin } from './middleware/auth.js';
 
 // 导入路由
@@ -66,12 +67,16 @@ let currentTokenIndex = 0; // 轮询索引
 // 负载均衡策略
 const LOAD_BALANCE_STRATEGY = process.env.LOAD_BALANCE_STRATEGY || 'round-robin';
 
+// Retry config
+const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || '3', 10);
+const RETRY_DELAY_MS = parseInt(process.env.RETRY_DELAY_MS || '1000', 10);
+
 // 获取可用的 Token Manager（支持多种策略）
-function getAvailableTokenManager() {
-  const activeTokens = Token.getActive();
-  
+function getAvailableTokenManager(excludeIds = new Set()) {
+  const activeTokens = Token.getActive().filter(t => !excludeIds.has(t.id));
+
   if (activeTokens.length === 0) {
-    throw new Error('没有可用的 Token 账户');
+    return null;
   }
 
   let token;
@@ -135,69 +140,92 @@ app.get('/', (req, res) => {
 
 // OpenAI 兼容的聊天完成接口
 app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
-  let tokenId = null;
-  let success = false;
-  let statusCode = 500;
-  let errorMessage = null;
   const model = req.body.model || 'unknown';
   const apiKeyId = req.apiKey?.id || null;
-  
-  try {
-    const { manager, tokenId: tid } = getAvailableTokenManager();
-    tokenId = tid;
-    const proxyHandler = new ProxyHandler(manager);
-    
-    const isStream = req.body.stream === true;
-    
-    if (isStream) {
-      await proxyHandler.handleStreamRequest(req, res);
-      success = true;
-      statusCode = 200;
-    } else {
-      await proxyHandler.handleNonStreamRequest(req, res);
-      success = true;
-      statusCode = 200;
+  const isStream = req.body.stream === true;
+  const triedTokenIds = new Set();
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const result = getAvailableTokenManager(triedTokenIds);
+    if (!result) {
+      // No more tokens to try
+      break;
     }
-    
-    // 更新统计
-    if (tokenId) {
-      Token.updateUsage(tokenId, success);
-    }
-    
-    // 记录日志
-    ApiLog.create({
-      api_key_id: apiKeyId,
-      token_id: tokenId,
-      model: model,
-      endpoint: '/v1/chat/completions',
-      status_code: statusCode,
-      error_message: null
-    });
-    
-  } catch (error) {
-    console.error('代理请求失败:', error);
-    statusCode = 500;
-    errorMessage = error.message;
-    
-    // 更新失败统计
-    if (tokenId) {
+
+    const { manager, tokenId } = result;
+    triedTokenIds.add(tokenId);
+
+    try {
+      const proxyHandler = new ProxyHandler(manager);
+
+      if (isStream) {
+        await proxyHandler.handleStreamRequest(req, res);
+      } else {
+        await proxyHandler.handleNonStreamRequest(req, res);
+      }
+
+      // Success
+      Token.updateUsage(tokenId, true);
+      ApiLog.create({
+        api_key_id: apiKeyId,
+        token_id: tokenId,
+        model,
+        endpoint: '/v1/chat/completions',
+        status_code: 200,
+        error_message: null
+      });
+      return;
+
+    } catch (error) {
+      lastError = error;
       Token.updateUsage(tokenId, false);
+
+      const retryable = error instanceof ProxyError ? error.retryable : false;
+      const status = error instanceof ProxyError ? error.status : 500;
+
+      console.error(`[Attempt ${attempt}/${MAX_RETRIES}] Token ${tokenId} failed [${status}]: ${error.message}`);
+
+      if (!retryable || attempt >= MAX_RETRIES) {
+        break;
+      }
+
+      // 401/403: refresh token before next attempt
+      if (status === 401 || status === 403) {
+        try {
+          await manager.refreshToken();
+          console.log(`Token ${tokenId} refreshed, retrying...`);
+          triedTokenIds.delete(tokenId); // allow retry with same token after refresh
+        } catch (refreshErr) {
+          console.error(`Token ${tokenId} refresh failed: ${refreshErr.message}`);
+        }
+      }
+
+      if (RETRY_DELAY_MS > 0) {
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+      }
     }
-    
-    // 记录失败日志
-    ApiLog.create({
-      api_key_id: apiKeyId,
-      token_id: tokenId,
-      model: model,
-      endpoint: '/v1/chat/completions',
-      status_code: statusCode,
-      error_message: errorMessage
-    });
-    
-    res.status(500).json({
+  }
+
+  // All retries exhausted
+  const status = lastError instanceof ProxyError ? lastError.status : 500;
+  const message = lastError?.message || 'No available tokens';
+
+  ApiLog.create({
+    api_key_id: apiKeyId,
+    token_id: null,
+    model,
+    endpoint: '/v1/chat/completions',
+    status_code: status,
+    error_message: message
+  });
+
+  if (!res.headersSent) {
+    res.status(status).json({
       error: {
-        message: error.message,
-        type: 'proxy_error'
+        message,
+        type: 'proxy_error',
+        code: status
       }
     });
   }
