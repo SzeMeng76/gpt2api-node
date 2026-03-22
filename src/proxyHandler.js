@@ -244,7 +244,7 @@ class ProxyHandler {
     try {
       const openaiRequest = req.body;
       // console.log('收到请求:', JSON.stringify(openaiRequest, null, 2));
-      
+
       const codexRequest = this.transformRequest(openaiRequest);
       // console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
       
@@ -418,7 +418,8 @@ class ProxyHandler {
   async handlePassthrough(req, res) {
     try {
       const accessToken = await this.tokenManager.getValidToken();
-      const isStream = req.body.stream !== false;
+      const requestBody = { ...req.body, stream: true }; // Codex API requires stream: true
+      const clientWantsStream = req.body.stream !== false;
 
       const headers = {
         'Authorization': `Bearer ${accessToken}`,
@@ -429,73 +430,72 @@ class ProxyHandler {
         'Session_id': this.generateSessionId()
       };
 
-      if (isStream) {
-        headers['Accept'] = 'text/event-stream';
+      headers['Accept'] = 'text/event-stream';
 
-        const response = await axios.post(
-          `${CODEX_BASE_URL}/responses`,
-          req.body,
-          { headers, responseType: 'stream', timeout: 300000 }
-        );
+      const response = await axios.post(
+        `${CODEX_BASE_URL}/responses`,
+        requestBody,
+        { headers, responseType: 'stream', timeout: 300000 }
+      );
 
+      let usage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+      let fullData = ''; // Accumulate for non-stream clients
+
+      if (clientWantsStream) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
+      }
 
-        let usage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
-
-        return new Promise((resolve, reject) => {
-          response.data.on('data', (chunk) => {
-            const text = chunk.toString();
+      return new Promise((resolve, reject) => {
+        response.data.on('data', (chunk) => {
+          const text = chunk.toString();
+          if (clientWantsStream) {
             res.write(text);
+          } else {
+            fullData += text;
+          }
 
-            // Capture usage from response.completed event
-            if (text.includes('response.completed')) {
-              for (const line of text.split('\n')) {
-                if (line.trim().startsWith('data:')) {
-                  try {
-                    const parsed = JSON.parse(line.slice(5).trim());
-                    if (parsed.type === 'response.completed') {
-                      const u = parsed.response?.usage || {};
-                      usage = {
-                        input_tokens: u.input_tokens || 0,
-                        output_tokens: u.output_tokens || 0,
-                        total_tokens: u.total_tokens || 0
-                      };
+          // Capture usage from response.completed event
+          if (text.includes('response.completed')) {
+            for (const line of text.split('\n')) {
+              if (line.trim().startsWith('data:')) {
+                try {
+                  const parsed = JSON.parse(line.slice(5).trim());
+                  if (parsed.type === 'response.completed') {
+                    const u = parsed.response?.usage || {};
+                    usage = {
+                      input_tokens: u.input_tokens || 0,
+                      output_tokens: u.output_tokens || 0,
+                      total_tokens: u.total_tokens || 0
+                    };
+                    if (!clientWantsStream) {
+                      // Return the completed response as JSON for non-stream clients
+                      res.json(parsed);
                     }
-                  } catch (e) {}
-                }
+                  }
+                } catch (e) {}
               }
             }
-          });
-
-          response.data.on('end', () => {
-            res.end();
-            resolve(usage);
-          });
-
-          response.data.on('error', (error) => {
-            res.end();
-            reject(new ProxyError(error.message, 500, true));
-          });
+          }
         });
-      } else {
-        const response = await axios.post(
-          `${CODEX_BASE_URL}/responses`,
-          req.body,
-          { headers, timeout: 300000 }
-        );
 
-        res.json(response.data);
+        response.data.on('end', () => {
+          if (clientWantsStream) {
+            res.end();
+          } else if (!res.headersSent) {
+            // Fallback: if no response.completed found
+            res.status(500).json({ error: { message: 'No completed response received' } });
+          }
+          resolve(usage);
+        });
 
-        // Extract usage if available
-        const u = response.data?.usage || {};
-        return {
-          input_tokens: u.input_tokens || 0,
-          output_tokens: u.output_tokens || 0,
-          total_tokens: u.total_tokens || 0
-        };
-      }
+        response.data.on('error', (error) => {
+          res.end();
+          reject(new ProxyError(error.message, 500, true));
+        });
+      });
+
     } catch (error) {
       const status = error.response?.status || 500;
       const message = error.response?.data?.error?.message || error.message;
