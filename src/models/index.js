@@ -155,16 +155,28 @@ export class Token {
 export class ApiLog {
   static create(data) {
     db.prepare(`
-      INSERT INTO api_logs (api_key_id, token_id, model, endpoint, status_code, error_message)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO api_logs (api_key_id, token_id, model, endpoint, status_code, error_message, input_tokens, output_tokens, total_tokens)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.api_key_id || null,
       data.token_id || null,
       data.model || null,
       data.endpoint || null,
       data.status_code || null,
-      data.error_message || null
+      data.error_message || null,
+      data.input_tokens || 0,
+      data.output_tokens || 0,
+      data.total_tokens || 0
     );
+  }
+
+  static getTokenUsage(tokenId) {
+    return db.prepare(`
+      SELECT COALESCE(SUM(input_tokens), 0) as input_tokens,
+             COALESCE(SUM(output_tokens), 0) as output_tokens,
+             COALESCE(SUM(total_tokens), 0) as total_tokens
+      FROM api_logs WHERE token_id = ? AND status_code >= 200 AND status_code < 300
+    `).get(tokenId);
   }
 
   static getRecent(limit = 100) {

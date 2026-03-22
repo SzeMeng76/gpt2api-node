@@ -125,6 +125,17 @@ export function initDatabase() {
     )
   `);
 
+  // 为已存在的 api_logs 表添加 token 用量字段（如果不存在）
+  try {
+    db.exec(`ALTER TABLE api_logs ADD COLUMN input_tokens INTEGER DEFAULT 0`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE api_logs ADD COLUMN output_tokens INTEGER DEFAULT 0`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE api_logs ADD COLUMN total_tokens INTEGER DEFAULT 0`);
+  } catch (e) {}
+
   console.log('✓ 数据库表初始化完成');
 }
 

@@ -276,39 +276,58 @@ class ProxyHandler {
       // 处理流式响应
       let buffer = '';
       const state = {}; // 用于保存响应 ID 和创建时间
-      
-      response.data.on('data', (chunk) => {
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        
-        // 保留最后一行（可能不完整）
-        buffer = lines.pop() || '';
-        
-        for (const line of lines) {
-          if (line.trim()) {
-            const transformed = this.transformResponse(line, openaiRequest.model, true, state);
+
+      return new Promise((resolve, reject) => {
+        response.data.on('data', (chunk) => {
+          buffer += chunk.toString();
+          const lines = buffer.split('\n');
+
+          // 保留最后一行（可能不完整）
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.trim()) {
+              // 捕获 usage 数据
+              if (line.includes('response.completed')) {
+                try {
+                  const data = line.trim().startsWith('data:') ? line.slice(5).trim() : line;
+                  const parsed = JSON.parse(data);
+                  if (parsed.type === 'response.completed') {
+                    const u = parsed.response?.usage || {};
+                    state.usage = {
+                      input_tokens: u.input_tokens || 0,
+                      output_tokens: u.output_tokens || 0,
+                      total_tokens: u.total_tokens || 0
+                    };
+                  }
+                } catch (e) {}
+              }
+              const transformed = this.transformResponse(line, openaiRequest.model, true, state);
+              if (transformed) {
+                res.write(transformed);
+              }
+            }
+          }
+        });
+
+        response.data.on('end', () => {
+          // 处理缓冲区中剩余的数据
+          if (buffer.trim()) {
+            const transformed = this.transformResponse(buffer, openaiRequest.model, true, state);
             if (transformed) {
               res.write(transformed);
             }
           }
-        }
-      });
+          res.write('data: [DONE]\n\n');
+          res.end();
+          resolve(state.usage || { input_tokens: 0, output_tokens: 0, total_tokens: 0 });
+        });
 
-      response.data.on('end', () => {
-        // 处理缓冲区中剩余的数据
-        if (buffer.trim()) {
-          const transformed = this.transformResponse(buffer, openaiRequest.model, true, state);
-          if (transformed) {
-            res.write(transformed);
-          }
-        }
-        res.write('data: [DONE]\n\n');
-        res.end();
-      });
-
-      response.data.on('error', (error) => {
-        console.error('流式响应错误:', error.message);
-        res.end();
+        response.data.on('error', (error) => {
+          console.error('流式响应错误:', error.message);
+          res.end();
+          reject(new ProxyError(error.message, 500, true));
+        });
       });
 
     } catch (error) {
@@ -375,6 +394,14 @@ class ProxyHandler {
       // 转换为 OpenAI 格式
       const transformed = this.transformResponse(finalResponse, openaiRequest.model, false);
       res.json(transformed);
+
+      // 返回 usage 数据
+      const u = finalResponse.response?.usage || {};
+      return {
+        input_tokens: u.input_tokens || 0,
+        output_tokens: u.output_tokens || 0,
+        total_tokens: u.total_tokens || 0
+      };
 
     } catch (error) {
       const status = error.response?.status || 500;

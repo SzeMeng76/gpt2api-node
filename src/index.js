@@ -158,22 +158,34 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
 
     try {
       const proxyHandler = new ProxyHandler(manager);
+      let usage;
 
       if (isStream) {
-        await proxyHandler.handleStreamRequest(req, res);
+        usage = await proxyHandler.handleStreamRequest(req, res);
       } else {
-        await proxyHandler.handleNonStreamRequest(req, res);
+        usage = await proxyHandler.handleNonStreamRequest(req, res);
       }
 
-      // Success
+      // Success — update stats with actual token usage
       Token.updateUsage(tokenId, true);
+      if (usage && usage.total_tokens > 0) {
+        const token = Token.findById(tokenId);
+        Token.updateQuota(tokenId, {
+          total: token?.quota_total || 0,
+          used: (token?.quota_used || 0) + usage.total_tokens,
+          remaining: Math.max(0, (token?.quota_remaining || 0) - usage.total_tokens)
+        });
+      }
       ApiLog.create({
         api_key_id: apiKeyId,
         token_id: tokenId,
         model,
         endpoint: '/v1/chat/completions',
         status_code: 200,
-        error_message: null
+        error_message: null,
+        input_tokens: usage?.input_tokens || 0,
+        output_tokens: usage?.output_tokens || 0,
+        total_tokens: usage?.total_tokens || 0
       });
       return;
 

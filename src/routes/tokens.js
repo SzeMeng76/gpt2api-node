@@ -1,5 +1,5 @@
 import express from 'express';
-import { Token } from '../models/index.js';
+import { Token, ApiLog } from '../models/index.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -260,8 +260,9 @@ router.post('/:id/quota', async (req, res) => {
     }
     
     // 根据请求统计估算已使用额度
-    // 假设每次成功请求消耗约 100 tokens
-    const estimatedUsed = (token.success_requests || 0) * 100;
+    // 使用 api_logs 中的实际 token 用量，而非估算
+    const actualUsage = ApiLog.getTokenUsage(id);
+    const estimatedUsed = actualUsage.total_tokens || (token.success_requests || 0) * 100;
     const remaining = Math.max(0, totalQuota - estimatedUsed);
     
     // 如果失败率很高，可能接近额度上限
