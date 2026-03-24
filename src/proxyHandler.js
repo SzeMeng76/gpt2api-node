@@ -37,6 +37,60 @@ class ProxyHandler {
   }
 
   /**
+   * 规范化工具类型名称
+   */
+  normalizeToolType(toolType) {
+    // 将遗留的 web_search_preview 变体转换为稳定的 web_search
+    if (toolType === 'web_search_preview' || toolType === 'web_search_preview_2025_03_11') {
+      return 'web_search';
+    }
+    return toolType;
+  }
+
+  /**
+   * 规范化 tools 数组
+   */
+  normalizeTools(tools) {
+    if (!Array.isArray(tools)) return tools;
+
+    return tools.map(tool => {
+      if (tool && tool.type) {
+        const normalizedType = this.normalizeToolType(tool.type);
+        if (normalizedType !== tool.type) {
+          console.log(`[Tool Normalization] ${tool.type} → ${normalizedType}`);
+          return { ...tool, type: normalizedType };
+        }
+      }
+      return tool;
+    });
+  }
+
+  /**
+   * 规范化 tool_choice
+   */
+  normalizeToolChoice(toolChoice) {
+    if (!toolChoice || typeof toolChoice !== 'object') return toolChoice;
+
+    const normalized = { ...toolChoice };
+
+    // 规范化顶层 type
+    if (normalized.type) {
+      const normalizedType = this.normalizeToolType(normalized.type);
+      if (normalizedType !== normalized.type) {
+        console.log(`[Tool Choice Normalization] ${normalized.type} → ${normalizedType}`);
+        normalized.type = normalizedType;
+      }
+    }
+
+    // 规范化嵌套的 tools 数组
+    if (Array.isArray(normalized.tools)) {
+      normalized.tools = this.normalizeTools(normalized.tools);
+    }
+
+    return normalized;
+  }
+
+  /**
    * 转换 OpenAI 格式请求到 Codex 格式
    */
   transformRequest(openaiRequest) {
@@ -98,6 +152,14 @@ class ProxyHandler {
     if (rest.temperature !== undefined) codexRequest.temperature = rest.temperature;
     if (rest.max_tokens !== undefined) codexRequest.max_tokens = rest.max_tokens;
     if (rest.top_p !== undefined) codexRequest.top_p = rest.top_p;
+
+    // 处理 tools 和 tool_choice，并规范化工具类型
+    if (rest.tools !== undefined) {
+      codexRequest.tools = this.normalizeTools(rest.tools);
+    }
+    if (rest.tool_choice !== undefined) {
+      codexRequest.tool_choice = this.normalizeToolChoice(rest.tool_choice);
+    }
 
     return codexRequest;
   }
