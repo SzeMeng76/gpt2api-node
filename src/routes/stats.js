@@ -259,7 +259,28 @@ router.get('/logs', (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const range = req.query.range || '24h';
 
-    const logs = ApiLog.getRecent(limit);
+    // 根据时间范围计算时间戳
+    let timeFilter = '';
+    const now = new Date();
+    if (range === '24h') {
+      const time = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    } else if (range === '7d') {
+      const time = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    } else if (range === '30d') {
+      const time = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    }
+    // 'all' 不加时间过滤
+
+    // 根据时间范围获取日志
+    const logs = db.prepare(`
+      SELECT * FROM api_logs
+      WHERE 1=1 ${timeFilter}
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit);
 
     // 获取所有 API Keys 用于查找名称
     const apiKeys = ApiKey.getAll();
