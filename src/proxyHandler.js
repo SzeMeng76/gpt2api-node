@@ -48,6 +48,81 @@ class ProxyHandler {
   }
 
   /**
+   * 缩短工具名称（如果超过 64 字符）
+   */
+  shortenToolName(name) {
+    const limit = 64;
+    if (name.length <= limit) {
+      return name;
+    }
+
+    // 如果是 mcp__ 前缀，保留前缀和最后一段
+    if (name.startsWith('mcp__')) {
+      const lastIdx = name.lastIndexOf('__');
+      if (lastIdx > 0) {
+        const candidate = 'mcp__' + name.substring(lastIdx + 2);
+        if (candidate.length > limit) {
+          return candidate.substring(0, limit);
+        }
+        return candidate;
+      }
+    }
+
+    // 否则直接截断
+    return name.substring(0, limit);
+  }
+
+  /**
+   * 构建工具名称缩短映射表
+   */
+  buildToolNameMap(toolNames) {
+    const limit = 64;
+    const used = new Set();
+    const map = {};
+
+    const makeUnique = (candidate) => {
+      if (!used.has(candidate)) {
+        return candidate;
+      }
+
+      // 添加后缀确保唯一性
+      let base = candidate;
+      for (let i = 1; ; i++) {
+        const suffix = '_' + i;
+        const allowed = limit - suffix.length;
+        let tmp = base;
+        if (tmp.length > allowed) {
+          tmp = tmp.substring(0, allowed);
+        }
+        tmp = tmp + suffix;
+        if (!used.has(tmp)) {
+          return tmp;
+        }
+      }
+    };
+
+    for (const name of toolNames) {
+      const shortened = this.shortenToolName(name);
+      const unique = makeUnique(shortened);
+      used.add(unique);
+      map[name] = unique;
+    }
+
+    return map;
+  }
+
+  /**
+   * 构建反向工具名称映射（缩短名 -> 原始名）
+   */
+  buildReverseToolNameMap(toolNameMap) {
+    const reverse = {};
+    for (const [original, shortened] of Object.entries(toolNameMap)) {
+      reverse[shortened] = original;
+    }
+    return reverse;
+  }
+
+  /**
    * 规范化 tools 数组
    */
   normalizeTools(tools) {
@@ -110,6 +185,17 @@ class ProxyHandler {
       ...rest
     } = openaiRequest;
 
+    // 构建工具名称缩短映射表
+    let toolNameMap = {};
+    if (rest.tools && Array.isArray(rest.tools)) {
+      const toolNames = rest.tools
+        .filter(t => t.type === 'function' && t.function?.name)
+        .map(t => t.function.name);
+      if (toolNames.length > 0) {
+        toolNameMap = this.buildToolNameMap(toolNames);
+      }
+    }
+
     // 转换消息格式 - 处理所有消息类型
     const input = [];
 
@@ -164,10 +250,12 @@ class ProxyHandler {
       if (role === 'assistant' && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           if (tc.type === 'function') {
+            const originalName = tc.function.name;
+            const shortenedName = toolNameMap[originalName] || originalName;
             input.push({
               type: 'function_call',
               call_id: tc.id,
-              name: tc.function.name,
+              name: shortenedName,
               arguments: tc.function.arguments
             });
           }
@@ -187,18 +275,21 @@ class ProxyHandler {
         effort: rest.reasoning_effort || 'medium',
         summary: 'auto'
       },
-      include: ['reasoning.encrypted_content']
+      include: ['reasoning.encrypted_content'],
+      _toolNameMap: toolNameMap  // 保存映射表供响应转换使用
     };
 
-    // 处理 tools - 需要扁平化 function 字段
+    // 处理 tools - 需要扁平化 function 字段并缩短名称
     if (rest.tools !== undefined) {
       const normalizedTools = this.normalizeTools(rest.tools);
       codexRequest.tools = normalizedTools.map(tool => {
         if (tool.type === 'function' && tool.function) {
+          const originalName = tool.function.name;
+          const shortenedName = toolNameMap[originalName] || originalName;
           // 扁平化：将 function 对象的字段提升到顶层
           return {
             type: 'function',
-            name: tool.function.name,
+            name: shortenedName,
             description: tool.function.description,
             parameters: tool.function.parameters,
             ...(tool.function.strict !== undefined && { strict: tool.function.strict })
@@ -213,10 +304,12 @@ class ProxyHandler {
       if (typeof rest.tool_choice === 'string') {
         codexRequest.tool_choice = rest.tool_choice;
       } else if (rest.tool_choice.type === 'function' && rest.tool_choice.function) {
+        const originalName = rest.tool_choice.function.name;
+        const shortenedName = toolNameMap[originalName] || originalName;
         // 扁平化 function tool_choice
         codexRequest.tool_choice = {
           type: 'function',
-          name: rest.tool_choice.function.name
+          name: shortenedName
         };
       } else {
         codexRequest.tool_choice = this.normalizeToolChoice(rest.tool_choice);
@@ -347,6 +440,10 @@ class ProxyHandler {
           state.hasReceivedArgumentsDelta = false;
           state.hasToolCallAnnounced = true;
 
+          // 还原工具名称
+          const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
+          const originalName = reverseMap[item.name] || item.name;
+
           return `data: ${JSON.stringify({
             id: responseId,
             object: 'chat.completion.chunk',
@@ -361,7 +458,7 @@ class ProxyHandler {
                   id: item.call_id,
                   type: 'function',
                   function: {
-                    name: item.name,
+                    name: originalName,
                     arguments: ''
                   }
                 }]
@@ -433,6 +530,10 @@ class ProxyHandler {
           // 回退：模型跳过了 output_item.added，现在发送完整工具调用
           state.functionCallIndex++;
 
+          // 还原工具名称
+          const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
+          const originalName = reverseMap[item.name] || item.name;
+
           return `data: ${JSON.stringify({
             id: responseId,
             object: 'chat.completion.chunk',
@@ -447,7 +548,7 @@ class ProxyHandler {
                   id: item.call_id,
                   type: 'function',
                   function: {
-                    name: item.name,
+                    name: originalName,
                     arguments: item.arguments || ''
                   }
                 }]
@@ -513,12 +614,15 @@ class ProxyHandler {
               }
             }
           } else if (item.type === 'function_call') {
-            // 处理工具调用
+            // 处理工具调用 - 还原工具名称
+            const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
+            const originalName = reverseMap[item.name] || item.name;
+
             toolCalls.push({
               id: item.call_id || '',
               type: 'function',
               function: {
-                name: item.name || '',
+                name: originalName,
                 arguments: item.arguments || ''
               }
             });
@@ -572,8 +676,11 @@ class ProxyHandler {
       console.log('收到请求:', JSON.stringify(openaiRequest, null, 2));
 
       const codexRequest = this.transformRequest(openaiRequest);
+      const toolNameMap = codexRequest._toolNameMap || {};
+      delete codexRequest._toolNameMap;  // 删除内部字段，不发送给 Codex
+
       console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
-      
+
       const accessToken = await this.tokenManager.getValidToken();
 
       // 设置响应头
@@ -601,7 +708,7 @@ class ProxyHandler {
 
       // 处理流式响应
       let buffer = '';
-      const state = {}; // 用于保存响应 ID 和创建时间
+      const state = { toolNameMap }; // 用于保存响应 ID、创建时间和工具名称映射
 
       return new Promise((resolve, reject) => {
         response.data.on('data', (chunk) => {
@@ -674,6 +781,9 @@ class ProxyHandler {
       console.log('收到非流式请求:', JSON.stringify(openaiRequest, null, 2));
 
       const codexRequest = this.transformRequest({ ...openaiRequest, stream: true });
+      const toolNameMap = codexRequest._toolNameMap || {};
+      delete codexRequest._toolNameMap;  // 删除内部字段，不发送给 Codex
+
       console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
 
       const accessToken = await this.tokenManager.getValidToken();
@@ -726,8 +836,8 @@ class ProxyHandler {
             return;
           }
 
-          // 转换为 OpenAI 格式
-          const transformed = this.transformResponse(finalResponse, openaiRequest.model, false);
+          // 转换为 OpenAI 格式，传递工具名称映射
+          const transformed = this.transformResponse(finalResponse, openaiRequest.model, false, { toolNameMap });
           res.json(transformed);
 
           // 返回 usage 数据
