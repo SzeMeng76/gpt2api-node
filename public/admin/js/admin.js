@@ -279,58 +279,127 @@ async function loadTokens(page = 1) {
     const tbody = document.getElementById('tokensTable');
     
     if (data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-500">暂无 Token</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-gray-500">暂无 Token</td></tr>';
       updateTokenPagination(0, 0);
       return;
     }
-    
+
     tbody.innerHTML = data.map(token => {
       // 计算额度百分比
       const quotaTotal = token.quota_total || 0;
       const quotaUsed = token.quota_used || 0;
       const quotaRemaining = token.quota_remaining || 0;
       const quotaPercent = quotaTotal > 0 ? Math.round((quotaUsed / quotaTotal) * 100) : 0;
-      
+
       // 额度显示颜色
       let quotaColor = 'text-green-600';
       if (quotaPercent > 80) quotaColor = 'text-red-600';
       else if (quotaPercent > 50) quotaColor = 'text-yellow-600';
-      
+
       // 额度显示文本
       let quotaText = '-';
       if (quotaTotal > 0) {
-        quotaText = `<div class="text-xs ${quotaColor}">
-          <div class="font-medium">${quotaRemaining.toLocaleString()} / ${quotaTotal.toLocaleString()}</div>
-          <div class="text-gray-500">${quotaPercent}% 已用</div>
+        quotaText = `<div class="text-xs">
+          <div class="font-medium ${quotaColor}">剩余 ${quotaRemaining.toLocaleString()}</div>
+          <div class="text-gray-500">总额 ${quotaTotal.toLocaleString()} (${quotaPercent}%)</div>
         </div>`;
       }
-      
+
+      // 状态显示
+      const status = token.status || 'active';
+      const statusMessage = token.status_message || '';
+      const errorCount = token.error_count || 0;
+      const lastErrorAt = token.last_error_at;
+      const nextRetryAfter = token.next_retry_after;
+
+      let statusBadge = '';
+      let statusTooltip = '';
+
+      switch(status) {
+        case 'active':
+          statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"><i class="fas fa-check-circle mr-1"></i>正常</span>';
+          break;
+        case 'payment_required':
+          statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"><i class="fas fa-credit-card mr-1"></i>余额不足</span>';
+          statusTooltip = statusMessage;
+          break;
+        case 'forbidden':
+          statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"><i class="fas fa-ban mr-1"></i>账号封禁</span>';
+          statusTooltip = statusMessage;
+          break;
+        case 'rate_limited':
+          statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"><i class="fas fa-clock mr-1"></i>速率限制</span>';
+          if (nextRetryAfter) {
+            const retryTime = new Date(nextRetryAfter).toLocaleString('zh-CN');
+            statusTooltip = `${statusMessage}\n下次重试: ${retryTime}`;
+          } else {
+            statusTooltip = statusMessage;
+          }
+          break;
+        case 'unauthorized':
+          statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800"><i class="fas fa-key mr-1"></i>Token过期</span>';
+          statusTooltip = statusMessage;
+          break;
+        case 'error':
+          statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"><i class="fas fa-exclamation-triangle mr-1"></i>错误</span>';
+          statusTooltip = statusMessage;
+          break;
+        default:
+          statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">未知</span>';
+      }
+
+      // 错误次数显示
+      let errorCountText = errorCount > 0
+        ? `<span class="text-red-600 font-medium">${errorCount}</span>`
+        : '<span class="text-gray-400">0</span>';
+
+      if (errorCount >= 3) {
+        errorCountText = `<span class="text-red-600 font-bold animate-pulse">${errorCount} ⚠️</span>`;
+      }
+
+      // 最后使用时间
+      const lastUsedText = token.last_used_at
+        ? new Date(token.last_used_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '-';
+
+      // 是否启用
+      const isActiveText = token.is_active
+        ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">已启用</span>'
+        : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">已禁用</span>';
+
       return `
       <tr class="border-b border-gray-100 hover:bg-gray-50">
         <td class="py-4 px-4">
           <input type="checkbox" class="token-checkbox rounded border-gray-300 text-blue-600 focus:ring-blue-500" value="${token.id}" onchange="toggleTokenSelection(${token.id})" />
         </td>
-        <td class="py-4 px-4 text-sm text-gray-900">${escapeHtml(token.name || '-')}</td>
+        <td class="py-4 px-4">
+          <div class="text-sm font-medium text-gray-900">${escapeHtml(token.name || token.email || token.account_id || '-')}</div>
+          <div class="text-xs text-gray-500">${isActiveText}</div>
+        </td>
+        <td class="py-4 px-4">
+          <div title="${statusTooltip}" class="cursor-help">
+            ${statusBadge}
+            ${statusMessage ? `<div class="text-xs text-gray-500 mt-1 max-w-xs truncate" title="${escapeHtml(statusMessage)}">${escapeHtml(statusMessage)}</div>` : ''}
+          </div>
+        </td>
         <td class="py-4 px-4">${quotaText}</td>
         <td class="py-4 px-4 text-sm font-medium text-gray-900">${token.total_requests || 0}</td>
         <td class="py-4 px-4 text-sm text-green-600">${token.success_requests || 0}</td>
         <td class="py-4 px-4 text-sm text-red-600">${token.failed_requests || 0}</td>
-        <td class="py-4 px-4 text-sm text-gray-600">${token.expired_at ? new Date(token.expired_at).toLocaleString('zh-CN') : '-'}</td>
+        <td class="py-4 px-4 text-sm text-center">${errorCountText}</td>
+        <td class="py-4 px-4 text-xs text-gray-600">${lastUsedText}</td>
         <td class="py-4 px-4">
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${token.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-            ${token.is_active ? '启用' : '禁用'}
-          </span>
-        </td>
-        <td class="py-4 px-4">
-          <button onclick="refreshTokenQuota(${token.id})" class="text-sm text-blue-600 hover:text-blue-800 mr-2" title="刷新额度">
-            <i class="fas fa-sync-alt"></i>
-          </button>
-          <button onclick="toggleToken(${token.id}, ${token.is_active})" class="text-sm text-gray-600 hover:text-gray-900 mr-2">
-            ${token.is_active ? '禁用' : '启用'}
-          </button>
-          <button onclick="deleteToken(${token.id})" class="text-sm text-red-600 hover:text-red-800">
-            删除
-          </button>
+          <div class="flex items-center space-x-2">
+            <button onclick="refreshTokenQuota(${token.id})" class="text-sm text-blue-600 hover:text-blue-800" title="刷新额度">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+            <button onclick="toggleToken(${token.id}, ${token.is_active})" class="text-sm ${token.is_active ? 'text-gray-600 hover:text-gray-900' : 'text-green-600 hover:text-green-800'}" title="${token.is_active ? '禁用' : '启用'}">
+              <i class="fas ${token.is_active ? 'fa-pause-circle' : 'fa-play-circle'}"></i>
+            </button>
+            <button onclick="deleteToken(${token.id})" class="text-sm text-red-600 hover:text-red-800" title="删除">
+              <i class="fas fa-trash-alt"></i>
+            </button>
+          </div>
         </td>
       </tr>
       `;
@@ -628,15 +697,52 @@ async function refreshTokenQuota(id) {
   try {
     const response = await fetch(`/admin/tokens/${id}/quota`, { method: 'POST' });
     const data = await response.json();
-    
-    if (response.ok) {
+
+    if (data.success) {
       await loadTokens(currentTokenPage);
+
+      // 显示详细的额度信息
+      let message = '✅ 额度检查成功\n\n';
+
       if (data.quota) {
-        alert(`额度已更新\n总额度: ${data.quota.total.toLocaleString()}\n已使用: ${data.quota.used.toLocaleString()}\n剩余: ${data.quota.remaining.toLocaleString()}`);
+        message += `📊 额度信息:\n`;
+        message += `  总额度: ${data.quota.total.toLocaleString()}\n`;
+        message += `  已使用: ${data.quota.used.toLocaleString()}\n`;
+        message += `  剩余: ${data.quota.remaining.toLocaleString()}\n`;
+        if (data.quota.plan_type) {
+          message += `  订阅类型: ${data.quota.plan_type}\n`;
+        }
       }
+
+      if (data.account) {
+        message += `\n👤 账号信息:\n`;
+        if (data.account.email) message += `  邮箱: ${data.account.email}\n`;
+        if (data.account.account_id) message += `  账号ID: ${data.account.account_id}\n`;
+        if (data.account.plan_type) message += `  订阅: ${data.account.plan_type}\n`;
+      }
+
+      alert(message);
     } else {
-      alert('刷新额度失败: ' + (data.error || '未知错误'));
+      // 显示错误信息
+      let errorMsg = '❌ 额度检查失败\n\n';
+      errorMsg += `状态: ${data.status || 'unknown'}\n`;
+      errorMsg += `错误: ${data.error || '未知错误'}\n`;
+
+      if (data.error_code) {
+        errorMsg += `错误码: ${data.error_code}\n`;
+      }
+
+      if (data.auto_disabled) {
+        errorMsg += `\n⚠️ 该 Token 已被自动禁用\n`;
+        errorMsg += `原因: ${data.error}\n`;
+      } else if (data.retryable) {
+        errorMsg += `\n💡 该错误可重试，系统会自动重试\n`;
+      }
+
+      alert(errorMsg);
+      await loadTokens(currentTokenPage);
     }
+    await loadStats();
   } catch (error) {
     alert('刷新额度失败: ' + error.message);
   }
@@ -646,17 +752,36 @@ async function refreshAllQuotas() {
   if (!confirm('确定要刷新所有账号的额度吗？这可能需要一些时间。')) {
     return;
   }
-  
+
   try {
     const response = await fetch('/admin/tokens/quota/refresh-all', { method: 'POST' });
     const data = await response.json();
-    
-    if (response.ok) {
+
+    if (data.success) {
       await loadTokens(currentTokenPage);
-      alert(`批量刷新完成\n成功: ${data.success || 0} 个\n失败: ${data.failed || 0} 个`);
+
+      let message = '✅ 批量刷新完成\n\n';
+      message += `📊 统计:\n`;
+      message += `  总数: ${data.total || 0} 个\n`;
+      message += `  成功: ${data.success || 0} 个\n`;
+      message += `  失败: ${data.failed || 0} 个\n`;
+      message += `  自动禁用: ${data.disabled || 0} 个\n`;
+
+      if (data.errors && data.errors.length > 0) {
+        message += `\n⚠️ 错误详情:\n`;
+        data.errors.slice(0, 5).forEach(err => {
+          message += `  • ${err}\n`;
+        });
+        if (data.errors.length > 5) {
+          message += `  ... 还有 ${data.errors.length - 5} 个错误\n`;
+        }
+      }
+
+      alert(message);
     } else {
       alert('批量刷新失败: ' + (data.error || '未知错误'));
     }
+    await loadStats();
   } catch (error) {
     alert('批量刷新失败: ' + error.message);
   }

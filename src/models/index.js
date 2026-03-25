@@ -150,6 +150,53 @@ export class Token {
       id
     );
   }
+
+  static updateStatus(id, status, statusMessage = null) {
+    db.prepare(`
+      UPDATE tokens
+      SET status = ?,
+          status_message = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(status, statusMessage, id);
+  }
+
+  static incrementErrorCount(id) {
+    db.prepare(`
+      UPDATE tokens
+      SET error_count = error_count + 1,
+          last_error_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(id);
+  }
+
+  static resetErrorCount(id) {
+    db.prepare(`
+      UPDATE tokens
+      SET error_count = 0,
+          status = 'active',
+          status_message = NULL,
+          next_retry_after = NULL
+      WHERE id = ?
+    `).run(id);
+  }
+
+  static setRetryAfter(id, retryAfter) {
+    db.prepare(`
+      UPDATE tokens
+      SET next_retry_after = ?
+      WHERE id = ?
+    `).run(retryAfter, id);
+  }
+
+  static getAvailableForRetry() {
+    return db.prepare(`
+      SELECT * FROM tokens
+      WHERE is_active = 1
+      AND (next_retry_after IS NULL OR next_retry_after <= datetime('now'))
+      AND (status = 'active' OR status = 'error')
+    `).all();
+  }
 }
 
 export class ApiLog {

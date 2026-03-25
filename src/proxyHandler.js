@@ -4,7 +4,7 @@ const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const CODEX_USER_AGENT = 'codex_cli_rs/0.116.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464';
 const CODEX_ORIGINATOR = 'codex_cli_rs';
 
-const RETRYABLE_STATUS = new Set([401, 403, 429, 500, 502, 503, 504]);
+const RETRYABLE_STATUS = new Set([401, 402, 403, 429, 500, 502, 503, 504]);
 
 /**
  * Proxy error with retryable flag

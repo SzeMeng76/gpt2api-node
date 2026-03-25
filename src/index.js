@@ -72,10 +72,11 @@ function getLoadBalanceStrategy() {
 // Retry config
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || '3', 10);
 const RETRY_DELAY_MS = parseInt(process.env.RETRY_DELAY_MS || '1000', 10);
+const MAX_ERROR_COUNT = parseInt(process.env.MAX_ERROR_COUNT || '5', 10); // 连续失败 5 次后自动禁用
 
 // 获取可用的 Token Manager（支持多种策略）
 function getAvailableTokenManager(excludeIds = new Set()) {
-  const activeTokens = Token.getActive().filter(t => !excludeIds.has(t.id));
+  const activeTokens = Token.getAvailableForRetry().filter(t => !excludeIds.has(t.id));
 
   if (activeTokens.length === 0) {
     return null;
@@ -104,7 +105,7 @@ function getAvailableTokenManager(excludeIds = new Set()) {
       currentTokenIndex = (currentTokenIndex + 1) % activeTokens.length;
       break;
   }
-  
+
   if (!tokenManagers.has(token.id)) {
     // 创建临时 token 文件
     const tempTokenData = {
@@ -117,7 +118,7 @@ function getAvailableTokenManager(excludeIds = new Set()) {
       last_refresh_at: token.last_refresh_at,
       type: 'codex'
     };
-    
+
     // 使用内存中的 token 数据
     const manager = new TokenManager(null);
     manager.tokenData = tempTokenData;
@@ -174,6 +175,7 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
 
       // Success — update stats with actual token usage
       Token.updateUsage(tokenId, true);
+      Token.resetErrorCount(tokenId); // 成功后重置错误计数
       if (usage && usage.total_tokens > 0) {
         const token = Token.findById(tokenId);
         Token.updateQuota(tokenId, {
@@ -198,11 +200,43 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     } catch (error) {
       lastError = error;
       Token.updateUsage(tokenId, false);
+      Token.incrementErrorCount(tokenId); // 增加错误计数
 
       const retryable = error instanceof ProxyError ? error.retryable : false;
       const status = error instanceof ProxyError ? error.status : 500;
 
       console.error(`[Attempt ${attempt}/${MAX_RETRIES}] Token ${tokenId} failed [${status}]: ${error.message}`);
+
+      // 检查错误类型并更新状态
+      const token = Token.findById(tokenId);
+      if (token) {
+        let statusMessage = error.message;
+        let shouldDisable = false;
+
+        // 根据错误码设置状态
+        if (status === 402) {
+          Token.updateStatus(tokenId, 'payment_required', '账号余额不足或订阅已过期');
+          shouldDisable = true;
+        } else if (status === 403) {
+          Token.updateStatus(tokenId, 'forbidden', '账号被封禁或无权限');
+          shouldDisable = true;
+        } else if (status === 429) {
+          Token.updateStatus(tokenId, 'rate_limited', '请求频率超限');
+          // 设置重试时间（1小时后）
+          const retryAfter = new Date(Date.now() + 3600000).toISOString();
+          Token.setRetryAfter(tokenId, retryAfter);
+        } else if (token.error_count >= MAX_ERROR_COUNT) {
+          // 连续失败次数过多，自动禁用
+          Token.updateStatus(tokenId, 'error', `连续失败 ${token.error_count} 次`);
+          shouldDisable = true;
+        }
+
+        // 自动禁用失效的 token
+        if (shouldDisable) {
+          Token.toggleActive(tokenId, false);
+          console.log(`Token ${tokenId} 已自动禁用: ${statusMessage}`);
+        }
+      }
 
       if (!retryable || attempt >= MAX_RETRIES) {
         break;
@@ -271,6 +305,7 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
       const usage = await proxyHandler.handlePassthrough(req, res);
 
       Token.updateUsage(tokenId, true);
+      Token.resetErrorCount(tokenId); // 成功后重置错误计数
       if (usage && usage.total_tokens > 0) {
         const token = Token.findById(tokenId);
         Token.updateQuota(tokenId, {
@@ -295,11 +330,39 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
     } catch (error) {
       lastError = error;
       Token.updateUsage(tokenId, false);
+      Token.incrementErrorCount(tokenId); // 增加错误计数
 
       const retryable = error instanceof ProxyError ? error.retryable : false;
       const status = error instanceof ProxyError ? error.status : 500;
 
       console.error(`[Attempt ${attempt}/${MAX_RETRIES}] Token ${tokenId} failed [${status}]: ${error.message}`);
+
+      // 检查错误类型并更新状态
+      const token = Token.findById(tokenId);
+      if (token) {
+        let statusMessage = error.message;
+        let shouldDisable = false;
+
+        if (status === 402) {
+          Token.updateStatus(tokenId, 'payment_required', '账号余额不足或订阅已过期');
+          shouldDisable = true;
+        } else if (status === 403) {
+          Token.updateStatus(tokenId, 'forbidden', '账号被封禁或无权限');
+          shouldDisable = true;
+        } else if (status === 429) {
+          Token.updateStatus(tokenId, 'rate_limited', '请求频率超限');
+          const retryAfter = new Date(Date.now() + 3600000).toISOString();
+          Token.setRetryAfter(tokenId, retryAfter);
+        } else if (token.error_count >= MAX_ERROR_COUNT) {
+          Token.updateStatus(tokenId, 'error', `连续失败 ${token.error_count} 次`);
+          shouldDisable = true;
+        }
+
+        if (shouldDisable) {
+          Token.toggleActive(tokenId, false);
+          console.log(`Token ${tokenId} 已自动禁用: ${statusMessage}`);
+        }
+      }
 
       if (!retryable || attempt >= MAX_RETRIES) break;
 

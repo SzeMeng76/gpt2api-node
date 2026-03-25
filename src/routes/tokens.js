@@ -1,6 +1,7 @@
 import express from 'express';
 import { Token, ApiLog } from '../models/index.js';
 import { authenticateAdmin } from '../middleware/auth.js';
+import quotaChecker from '../quotaChecker.js';
 
 const router = express.Router();
 
@@ -218,7 +219,7 @@ router.post('/batch-delete', (req, res) => {
   }
 });
 
-// 刷新 Token 额度
+// 刷新 Token 额度（真实检查）
 router.post('/:id/quota', async (req, res) => {
   try {
     const { id } = req.params;
@@ -228,63 +229,77 @@ router.post('/:id/quota', async (req, res) => {
       return res.status(404).json({ error: 'Token 不存在' });
     }
 
-    // OpenAI Codex API 没有直接的额度查询接口
-    // 我们根据以下信息估算额度：
-    // 1. 从 ID Token 解析订阅类型（免费/付费）
-    // 2. 根据请求统计估算使用情况
-    // 3. 根据失败率判断是否接近额度上限
-    
-    let planType = 'free';  // 默认免费
-    let totalQuota = 50000;  // 免费账号默认额度
-    
-    // 尝试从 id_token 解析订阅信息
+    console.log(`开始检查 Token ${id} 的真实额度...`);
+
+    // 使用真实的 API 调用检查额度
+    const checkResult = await quotaChecker.checkQuota(token.access_token);
+
+    if (!checkResult.success) {
+      // 检查失败，更新错误状态
+      Token.incrementErrorCount(id);
+      Token.updateStatus(id, checkResult.status, checkResult.error_message);
+
+      // 如果是不可重试的错误（402, 403），自动禁用
+      if (!checkResult.retryable) {
+        Token.toggleActive(id, false);
+        console.log(`Token ${id} 遇到不可恢复错误，已自动禁用`);
+      }
+
+      // 如果有重试时间，设置下次重试时间
+      if (checkResult.retry_after) {
+        const retryAfter = new Date(Date.now() + checkResult.retry_after * 1000).toISOString();
+        Token.setRetryAfter(id, retryAfter);
+      }
+
+      return res.json({
+        success: false,
+        status: checkResult.status,
+        error: checkResult.error_message,
+        error_code: checkResult.error_code,
+        retryable: checkResult.retryable,
+        auto_disabled: !checkResult.retryable
+      });
+    }
+
+    // 检查成功，重置错误计数
+    Token.resetErrorCount(id);
+
+    // 获取实际使用量
+    const actualUsage = ApiLog.getTokenUsage(id);
+
+    // 从 ID Token 解析订阅信息
+    let planType = 'free';
+    let accountInfo = null;
+
     if (token.id_token) {
-      try {
-        const parts = token.id_token.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-          const authInfo = payload['https://api.openai.com/auth'];
-          if (authInfo && authInfo.chatgpt_plan_type) {
-            planType = authInfo.chatgpt_plan_type.toLowerCase();
-            // 根据订阅类型设置额度
-            if (planType.includes('plus') || planType.includes('pro')) {
-              totalQuota = 500000;  // 付费账号更高额度
-            } else if (planType.includes('team')) {
-              totalQuota = 1000000;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('解析 ID Token 失败:', e.message);
+      accountInfo = quotaChecker.parseIdToken(token.id_token);
+      if (accountInfo) {
+        planType = accountInfo.plan_type;
       }
     }
-    
-    // 根据请求统计估算已使用额度
-    // 使用 api_logs 中的实际 token 用量，而非估算
-    const actualUsage = ApiLog.getTokenUsage(id);
-    const estimatedUsed = actualUsage.total_tokens || (token.success_requests || 0) * 100;
-    const remaining = Math.max(0, totalQuota - estimatedUsed);
-    
-    // 如果失败率很高，可能接近额度上限
-    const failureRate = token.total_requests > 0
-      ? (token.failed_requests || 0) / token.total_requests
-      : 0;
-    
-    const quota = {
-      total: totalQuota,
-      used: estimatedUsed,
-      remaining: remaining,
-      plan_type: planType,
-      failure_rate: Math.round(failureRate * 100)
-    };
+
+    // 如果 API 返回了账号信息，使用 API 的信息
+    if (checkResult.account) {
+      planType = checkResult.account.plan_type;
+      accountInfo = checkResult.account;
+    }
+
+    // 估算额度
+    const quota = quotaChecker.estimateQuota(planType, actualUsage.total_tokens);
 
     // 更新数据库
     Token.updateQuota(id, quota);
+    Token.updateStatus(id, 'active', null);
 
     res.json({
       success: true,
-      quota,
-      message: '额度已更新（基于请求统计估算）'
+      quota: {
+        ...quota,
+        plan_type: planType
+      },
+      account: accountInfo,
+      usage: checkResult.usage,
+      message: '额度检查成功'
     });
   } catch (error) {
     console.error('刷新额度失败:', error);
@@ -292,62 +307,89 @@ router.post('/:id/quota', async (req, res) => {
   }
 });
 
-// 批量刷新所有 Token 额度
+// 批量刷新所有 Token 额度（真实检查）
 router.post('/quota/refresh-all', async (req, res) => {
   try {
     const tokens = Token.getAll();
     let successCount = 0;
     let failedCount = 0;
-    
+    let disabledCount = 0;
+    const errors = [];
+
     for (const token of tokens) {
       try {
+        console.log(`检查 Token ${token.id} (${token.email || token.account_id})...`);
+
+        // 使用真实的 API 调用检查额度
+        const checkResult = await quotaChecker.checkQuota(token.access_token);
+
+        if (!checkResult.success) {
+          // 检查失败
+          Token.incrementErrorCount(token.id);
+          Token.updateStatus(token.id, checkResult.status, checkResult.error_message);
+
+          // 如果是不可重试的错误，自动禁用
+          if (!checkResult.retryable) {
+            Token.toggleActive(token.id, false);
+            disabledCount++;
+            errors.push(`Token ${token.id}: ${checkResult.error_message} (已自动禁用)`);
+          } else {
+            errors.push(`Token ${token.id}: ${checkResult.error_message}`);
+          }
+
+          // 设置重试时间
+          if (checkResult.retry_after) {
+            const retryAfter = new Date(Date.now() + checkResult.retry_after * 1000).toISOString();
+            Token.setRetryAfter(token.id, retryAfter);
+          }
+
+          failedCount++;
+          continue;
+        }
+
+        // 检查成功
+        Token.resetErrorCount(token.id);
+
+        // 获取实际使用量
+        const actualUsage = ApiLog.getTokenUsage(token.id);
+
+        // 解析订阅信息
         let planType = 'free';
-        let totalQuota = 50000;
-        
-        // 解析 ID Token 获取订阅类型
         if (token.id_token) {
-          try {
-            const parts = token.id_token.split('.');
-            if (parts.length === 3) {
-              const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-              const authInfo = payload['https://api.openai.com/auth'];
-              if (authInfo && authInfo.chatgpt_plan_type) {
-                planType = authInfo.chatgpt_plan_type.toLowerCase();
-                if (planType.includes('plus') || planType.includes('pro')) {
-                  totalQuota = 500000;
-                } else if (planType.includes('team')) {
-                  totalQuota = 1000000;
-                }
-              }
-            }
-          } catch (e) {
-            // 忽略解析错误
+          const accountInfo = quotaChecker.parseIdToken(token.id_token);
+          if (accountInfo) {
+            planType = accountInfo.plan_type;
           }
         }
-        
-        const estimatedUsed = (token.success_requests || 0) * 100;
-        const remaining = Math.max(0, totalQuota - estimatedUsed);
-        
-        const quota = {
-          total: totalQuota,
-          used: estimatedUsed,
-          remaining: remaining
-        };
-        
+
+        // 如果 API 返回了账号信息，使用 API 的信息
+        if (checkResult.account) {
+          planType = checkResult.account.plan_type;
+        }
+
+        // 估算额度
+        const quota = quotaChecker.estimateQuota(planType, actualUsage.total_tokens);
+
+        // 更新数据库
         Token.updateQuota(token.id, quota);
+        Token.updateStatus(token.id, 'active', null);
+
         successCount++;
       } catch (error) {
         console.error(`刷新 Token ${token.id} 额度失败:`, error);
         failedCount++;
+        errors.push(`Token ${token.id}: ${error.message}`);
       }
     }
-    
+
     res.json({
       success: true,
       total: tokens.length,
       success: successCount,
       failed: failedCount,
-      message: `批量刷新完成：成功 ${successCount} 个，失败 ${failedCount} 个`
+      disabled: disabledCount,
+      errors: errors.length > 0 ? errors : undefined,
+      message: `批量刷新完成：成功 ${successCount} 个，失败 ${failedCount} 个，自动禁用 ${disabledCount} 个`
     });
   } catch (error) {
     console.error('批量刷新额度失败:', error);

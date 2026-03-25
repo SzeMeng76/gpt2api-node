@@ -109,6 +109,23 @@ export function initDatabase() {
     // 字段已存在，忽略错误
   }
 
+  // 添加状态管理字段
+  try {
+    db.exec(`ALTER TABLE tokens ADD COLUMN status TEXT DEFAULT 'active'`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE tokens ADD COLUMN status_message TEXT`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE tokens ADD COLUMN error_count INTEGER DEFAULT 0`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE tokens ADD COLUMN last_error_at DATETIME`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE tokens ADD COLUMN next_retry_after DATETIME`);
+  } catch (e) {}
+
   // API 日志表
   db.exec(`
     CREATE TABLE IF NOT EXISTS api_logs (
