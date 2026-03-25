@@ -158,6 +158,9 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE api_logs ADD COLUMN total_tokens INTEGER DEFAULT 0`);
   } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE api_logs ADD COLUMN response_time INTEGER DEFAULT 0`);
+  } catch (e) {}
 
   // 系统设置表
   db.exec(`

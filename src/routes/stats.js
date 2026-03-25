@@ -56,6 +56,13 @@ router.get('/analytics', (req, res) => {
       WHERE status_code >= 200 AND status_code < 300
     `).get();
 
+    // 计算平均响应时间
+    const avgResponseTimeResult = db.prepare(`
+      SELECT COALESCE(AVG(response_time), 0) as avg_response_time
+      FROM api_logs
+      WHERE status_code >= 200 AND status_code < 300 AND response_time > 0
+    `).get();
+
     // 按模型统计费用
     const modelCosts = db.prepare(`
       SELECT
@@ -90,6 +97,7 @@ router.get('/analytics', (req, res) => {
       totalRequests,
       successRequests,
       failedRequests,
+      avgResponseTime: Math.round(avgResponseTimeResult.avg_response_time),
       tokenUsage: {
         input: tokenStats.total_input_tokens,
         output: tokenStats.total_output_tokens,

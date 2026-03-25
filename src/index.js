@@ -149,6 +149,7 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
   const isStream = req.body.stream === true;
   const triedTokenIds = new Set();
   let lastError = null;
+  const startTime = Date.now(); // 记录开始时间
 
   // 查找模型配置
   const modelConfig = modelsList.find(m => m.id === model);
@@ -193,7 +194,8 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
         error_message: null,
         input_tokens: usage?.input_tokens || 0,
         output_tokens: usage?.output_tokens || 0,
-        total_tokens: usage?.total_tokens || 0
+        total_tokens: usage?.total_tokens || 0,
+        response_time: Date.now() - startTime
       });
       return;
 
@@ -269,7 +271,8 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     model,
     endpoint: '/v1/chat/completions',
     status_code: status,
-    error_message: message
+    error_message: message,
+    response_time: Date.now() - startTime
   });
 
   if (!res.headersSent) {
@@ -289,6 +292,7 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
   const apiKeyId = req.apiKey?.id || null;
   const triedTokenIds = new Set();
   let lastError = null;
+  const startTime = Date.now(); // 记录开始时间
 
   // 查找模型配置
   const modelConfig = modelsList.find(m => m.id === model);
@@ -323,7 +327,8 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
         error_message: null,
         input_tokens: usage?.input_tokens || 0,
         output_tokens: usage?.output_tokens || 0,
-        total_tokens: usage?.total_tokens || 0
+        total_tokens: usage?.total_tokens || 0,
+        response_time: Date.now() - startTime
       });
       return;
 
@@ -386,7 +391,8 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
 
   ApiLog.create({
     api_key_id: apiKeyId, token_id: null, model,
-    endpoint: '/v1/responses', status_code: status, error_message: message
+    endpoint: '/v1/responses', status_code: status, error_message: message,
+    response_time: Date.now() - startTime
   });
 
   if (!res.headersSent) {

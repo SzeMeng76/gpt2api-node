@@ -920,6 +920,7 @@ async function loadAnalyticsStats() {
     document.getElementById('totalRequests').textContent = data.totalRequests || 0;
     document.getElementById('successRequests').textContent = data.successRequests || 0;
     document.getElementById('failedRequests').textContent = data.failedRequests || 0;
+    document.getElementById('avgResponseTime').textContent = (data.avgResponseTime || 0) + 'ms';
 
     // Token 使用统计
     if (data.tokenUsage) {
@@ -927,6 +928,11 @@ async function loadAnalyticsStats() {
       document.getElementById('outputTokens').textContent = (data.tokenUsage.output || 0).toLocaleString();
       document.getElementById('totalTokensDetail').textContent = (data.tokenUsage.total || 0).toLocaleString();
       document.getElementById('totalTokens').textContent = (data.tokenUsage.total || 0).toLocaleString();
+    } else {
+      document.getElementById('inputTokens').textContent = '0';
+      document.getElementById('outputTokens').textContent = '0';
+      document.getElementById('totalTokensDetail').textContent = '0';
+      document.getElementById('totalTokens').textContent = '0';
     }
 
     // 估算费用
@@ -949,8 +955,11 @@ async function loadAnalyticsStats() {
           </div>
         `).join('');
       } else {
-        modelCostList.innerHTML = '<div class="text-center py-4 text-gray-500">暂无数据</div>';
+        modelCostList.innerHTML = '<div class="text-center py-8 text-gray-500"><i class="fas fa-inbox mr-2"></i>暂无数据<br><span class="text-xs mt-1">发起请求后将显示统计</span></div>';
       }
+    } else {
+      document.getElementById('estimatedCost').textContent = '$0.00';
+      document.getElementById('modelCostList').innerHTML = '<div class="text-center py-8 text-gray-500"><i class="fas fa-inbox mr-2"></i>暂无数据</div>';
     }
   } catch (error) {
     console.error('加载统计数据失败:', error);

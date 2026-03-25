@@ -202,8 +202,8 @@ export class Token {
 export class ApiLog {
   static create(data) {
     db.prepare(`
-      INSERT INTO api_logs (api_key_id, token_id, model, endpoint, status_code, error_message, input_tokens, output_tokens, total_tokens)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO api_logs (api_key_id, token_id, model, endpoint, status_code, error_message, input_tokens, output_tokens, total_tokens, response_time)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.api_key_id || null,
       data.token_id || null,
@@ -213,7 +213,8 @@ export class ApiLog {
       data.error_message || null,
       data.input_tokens || 0,
       data.output_tokens || 0,
-      data.total_tokens || 0
+      data.total_tokens || 0,
+      data.response_time || 0
     );
   }
 
