@@ -63,7 +63,7 @@ router.get('/analytics', (req, res) => {
       WHERE status_code >= 200 AND status_code < 300 AND response_time > 0
     `).get();
 
-    // 按模型统计费用
+    // 按模型统计费用（过滤掉 0 token 的）
     const modelCosts = db.prepare(`
       SELECT
         model,
@@ -73,6 +73,7 @@ router.get('/analytics', (req, res) => {
         COALESCE(SUM(total_tokens), 0) as total_tokens
       FROM api_logs
       WHERE status_code >= 200 AND status_code < 300
+        AND total_tokens > 0
       GROUP BY model
       ORDER BY total_tokens DESC
     `).all();
@@ -194,17 +195,26 @@ router.get('/charts', (req, res) => {
 router.get('/accounts', (req, res) => {
   try {
     const tokens = Token.getAll();
-    
-    const accountStats = tokens.map(token => ({
-      name: token.name || token.email || token.account_id || 'Unknown',
-      requests: token.total_requests || 0,
-      successRate: token.total_requests > 0 
-        ? Math.round(((token.success_requests || 0) / token.total_requests) * 100) 
-        : 100,
-      avgResponseTime: Math.floor(Math.random() * 200) + 50,
-      lastUsed: token.last_used_at
-    })).filter(m => m.requests > 0);
-    
+
+    const accountStats = tokens.map(token => {
+      // 计算该 token 的平均响应时间
+      const avgResponseTime = db.prepare(`
+        SELECT COALESCE(AVG(response_time), 0) as avg_response_time
+        FROM api_logs
+        WHERE token_id = ? AND status_code >= 200 AND status_code < 300 AND response_time > 0
+      `).get(token.id);
+
+      return {
+        name: token.name || token.email || token.account_id || 'Unknown',
+        requests: token.total_requests || 0,
+        successRate: token.total_requests > 0
+          ? Math.round(((token.success_requests || 0) / token.total_requests) * 100)
+          : 100,
+        avgResponseTime: Math.round(avgResponseTime.avg_response_time),
+        lastUsed: token.last_used_at
+      };
+    }).filter(m => m.requests > 0);
+
     res.json(accountStats);
   } catch (error) {
     console.error('获取账号统计失败:', error);

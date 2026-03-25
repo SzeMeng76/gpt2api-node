@@ -151,6 +151,52 @@ export class Token {
     );
   }
 
+  static consumeQuota(id, tokens) {
+    const token = this.findById(id);
+    if (!token) return;
+
+    // 检查是否需要重置额度（3小时）
+    const now = new Date();
+    const resetAt = token.quota_reset_at ? new Date(token.quota_reset_at) : null;
+
+    if (!resetAt || now >= resetAt) {
+      // 需要重置额度
+      const planType = token.plan_type || 'free';
+      let totalQuota = 50000;
+
+      if (planType.includes('plus') || planType.includes('pro')) {
+        totalQuota = 500000;
+      } else if (planType.includes('team')) {
+        totalQuota = 1000000;
+      } else if (planType.includes('enterprise')) {
+        totalQuota = 5000000;
+      }
+
+      // 设置下次重置时间（3小时后）
+      const nextReset = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+
+      db.prepare(`
+        UPDATE tokens
+        SET quota_total = ?,
+            quota_used = ?,
+            quota_remaining = ?,
+            quota_reset_at = ?
+        WHERE id = ?
+      `).run(totalQuota, tokens, totalQuota - tokens, nextReset.toISOString(), id);
+    } else {
+      // 正常扣除额度
+      db.prepare(`
+        UPDATE tokens
+        SET quota_used = quota_used + ?,
+            quota_remaining = CASE
+              WHEN quota_remaining - ? < 0 THEN 0
+              ELSE quota_remaining - ?
+            END
+        WHERE id = ?
+      `).run(tokens, tokens, tokens, id);
+    }
+  }
+
   static updateStatus(id, status, statusMessage = null) {
     db.prepare(`
       UPDATE tokens

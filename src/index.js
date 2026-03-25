@@ -178,12 +178,7 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
       Token.updateUsage(tokenId, true);
       Token.resetErrorCount(tokenId); // 成功后重置错误计数
       if (usage && usage.total_tokens > 0) {
-        const token = Token.findById(tokenId);
-        Token.updateQuota(tokenId, {
-          total: token?.quota_total || 0,
-          used: (token?.quota_used || 0) + usage.total_tokens,
-          remaining: Math.max(0, (token?.quota_remaining || 0) - usage.total_tokens)
-        });
+        Token.consumeQuota(tokenId, usage.total_tokens);
       }
       ApiLog.create({
         api_key_id: apiKeyId,
@@ -311,12 +306,7 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
       Token.updateUsage(tokenId, true);
       Token.resetErrorCount(tokenId); // 成功后重置错误计数
       if (usage && usage.total_tokens > 0) {
-        const token = Token.findById(tokenId);
-        Token.updateQuota(tokenId, {
-          total: token?.quota_total || 0,
-          used: (token?.quota_used || 0) + usage.total_tokens,
-          remaining: Math.max(0, (token?.quota_remaining || 0) - usage.total_tokens)
-        });
+        Token.consumeQuota(tokenId, usage.total_tokens);
       }
       ApiLog.create({
         api_key_id: apiKeyId,

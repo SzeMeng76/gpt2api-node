@@ -127,18 +127,10 @@ function normalizeModelName(model) {
 }
 
 /**
- * 格式化费用显示
+ * 格式化费用显示（美元格式）
  */
 export function formatCost(cost) {
-  if (cost < 0.001) {
-    return `$${(cost * 1000).toFixed(4)}‰`;
-  } else if (cost < 0.01) {
-    return `$${(cost * 100).toFixed(3)}¢`;
-  } else if (cost < 1) {
-    return `$${(cost * 100).toFixed(2)}¢`;
-  } else {
-    return `$${cost.toFixed(2)}`;
-  }
+  return `$${cost.toFixed(4)}`;
 }
 
 /**

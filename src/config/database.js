@@ -131,6 +131,9 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE tokens ADD COLUMN plan_type TEXT DEFAULT 'free'`);
   } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE tokens ADD COLUMN quota_reset_at DATETIME`);
+  } catch (e) {}
 
   // API 日志表
   db.exec(`
