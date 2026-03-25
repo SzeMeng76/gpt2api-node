@@ -271,15 +271,18 @@ class ProxyHandler {
     } else {
       // 非流式响应处理
       try {
-        const parsed = typeof codexResponse === 'string' 
-          ? JSON.parse(codexResponse) 
+        const parsed = typeof codexResponse === 'string'
+          ? JSON.parse(codexResponse)
           : codexResponse;
 
         const response = parsed.response || {};
         const output = response.output || [];
-        
-        // 提取消息内容
+
+        // 提取消息内容和推理内容
         let content = '';
+        let reasoningContent = '';
+        const toolCalls = [];
+
         for (const item of output) {
           if (item.type === 'message' && item.content) {
             for (const part of item.content) {
@@ -287,23 +290,48 @@ class ProxyHandler {
                 content += part.text || '';
               }
             }
+          } else if (item.type === 'reasoning' && item.summary) {
+            // 提取推理摘要
+            for (const summaryItem of item.summary) {
+              if (summaryItem.type === 'summary_text') {
+                reasoningContent += summaryItem.text || '';
+              }
+            }
+          } else if (item.type === 'function_call') {
+            // 处理工具调用
+            toolCalls.push({
+              id: item.call_id || '',
+              type: 'function',
+              function: {
+                name: item.name || '',
+                arguments: item.arguments || ''
+              }
+            });
           }
         }
 
         const usage = response.usage || {};
+        const message = { role: 'assistant', content: content };
+
+        // 添加推理内容（如果有）
+        if (reasoningContent) {
+          message.reasoning_content = reasoningContent;
+        }
+
+        // 添加工具调用（如果有）
+        if (toolCalls.length > 0) {
+          message.tool_calls = toolCalls;
+        }
 
         return {
           id: response.id || 'chatcmpl-' + Date.now(),
           object: 'chat.completion',
-          created: Math.floor(Date.now() / 1000),
-          model: model,
+          created: response.created_at || Math.floor(Date.now() / 1000),
+          model: response.model || model,
           choices: [{
             index: 0,
-            message: {
-              role: 'assistant',
-              content: content
-            },
-            finish_reason: 'stop'
+            message,
+            finish_reason: response.status === 'completed' ? 'stop' : 'stop'
           }],
           usage: {
             prompt_tokens: usage.input_tokens || 0,
