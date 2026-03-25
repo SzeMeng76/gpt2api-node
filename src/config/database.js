@@ -126,7 +126,7 @@ export function initDatabase() {
     db.exec(`ALTER TABLE tokens ADD COLUMN next_retry_after DATETIME`);
   } catch (e) {}
   try {
-    db.exec(`ALTER TABLE tokens ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`);
+    db.exec(`ALTER TABLE tokens ADD COLUMN updated_at DATETIME`);
   } catch (e) {}
 
   // API 日志表
