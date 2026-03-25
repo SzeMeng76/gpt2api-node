@@ -13,6 +13,7 @@
 - ✅ **工具调用（Function Calling）** - 完整支持工具定义、调用和响应
 - ✅ **推理内容（Reasoning Content）** - 支持 o1/o3 系列模型的推理过程输出
 - ✅ **结构化输出（Structured Outputs）** - 支持 JSON Schema 格式约束
+- ✅ **Thinking 配置支持** - 每个模型可配置独立的 reasoning effort levels
 
 ### 请求转换
 - 🔄 **智能参数过滤** - 自动过滤 Codex API 不支持的参数（temperature, top_p, max_tokens 等）
@@ -20,6 +21,7 @@
 - 🔧 **工具定义扁平化** - 自动将嵌套的 function 字段提升到顶层
 - ✂️ **长工具名自动缩短** - 超过 64 字符的工具名自动缩短并在响应时还原
 - 🎯 **工具类型标准化** - 自动转换遗留工具类型（如 web_search_preview → web_search）
+- 🔑 **客户端身份透传** - 支持透传 Originator、Version、X-Codex-Turn-Metadata 等 headers
 
 ### 响应处理
 - 📊 **完整的流式事件支持** - 处理所有 Codex 响应事件类型
@@ -228,7 +230,7 @@ curl http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.3-codex",
+    "model": "gpt-5.4",
     "messages": [
       {"role": "user", "content": "Hello!"}
     ],
@@ -243,7 +245,7 @@ curl http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.3-codex",
+    "model": "gpt-5.4",
     "messages": [
       {"role": "user", "content": "Write a Python function"}
     ],
@@ -258,7 +260,7 @@ curl http://localhost:3000/v1/chat/completions \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.3-codex",
+    "model": "gpt-5.4",
     "messages": [
       {"role": "user", "content": "What is the weather in Beijing?"}
     ],
@@ -340,7 +342,11 @@ curl http://localhost:3000/health
 
 ## 支持的模型
 
-- `gpt-5.3-codex` - GPT 5.3 Codex（最新）
+所有模型均支持 Thinking/Reasoning 功能，可配置 reasoning effort levels（low, medium, high）。
+
+- `gpt-5.4` - GPT 5.4（最新，2026年3月发布，融合推理和编码能力）
+- `gpt-5.4-2026-03-05` - GPT 5.4 固定快照版本
+- `gpt-5.3-codex` - GPT 5.3 Codex
 - `gpt-5.2` - GPT 5.2
 - `gpt-5.2-codex` - GPT 5.2 Codex
 - `gpt-5.1` - GPT 5.1
@@ -350,6 +356,37 @@ curl http://localhost:3000/health
 - `gpt-5` - GPT 5
 - `gpt-5-codex` - GPT 5 Codex
 - `gpt-5-codex-mini` - GPT 5 Codex Mini
+
+**注意**: GPT-5.4 已经融合了 GPT-5.3-Codex 的编码能力，是一个统一的模型，不再有单独的 `gpt-5.4-codex` 版本。
+
+### 模型配置
+
+模型配置存储在 `models.json` 文件中，支持为每个模型配置独立的 thinking 支持：
+
+```json
+{
+  "id": "gpt-5.4",
+  "object": "model",
+  "created": 1772697600,
+  "owned_by": "openai",
+  "thinking": {
+    "levels": ["low", "medium", "high"]
+  }
+}
+```
+
+在请求中可以通过 `reasoning_effort` 参数指定推理强度：
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.4",
+    "messages": [{"role": "user", "content": "Solve this problem"}],
+    "reasoning_effort": "high"
+  }'
+```
 
 ## 在 Cherry Studio 中使用
 
@@ -491,11 +528,22 @@ RETRY_DELAY_MS=1000
    - 缩短：超过 64 字符的工具名自动缩短（保留 `mcp__` 前缀和最后一段）
    - 唯一性：添加数字后缀确保缩短后的名称唯一
 
-4. **必需字段设置**
+4. **Reasoning 配置验证**
+   - 根据模型配置验证 `reasoning_effort` 是否在允许的 levels 中
+   - 如果不在允许列表，使用默认值（第一个 level 或 'medium'）
+   - 如果模型没有 thinking 配置，使用请求中的值或默认 'medium'
+
+5. **客户端身份 Headers 透传**
+   - `Originator` - 客户端来源标识（默认：`codex_cli_rs`）
+   - `Version` - 客户端版本号（默认：空）
+   - `X-Codex-Turn-Metadata` - 会话元数据（可选）
+   - `X-Client-Request-Id` - 客户端请求 ID（可选）
+
+6. **必需字段设置**
    - `stream`: 根据请求设置
    - `store`: 固定为 `false`
    - `parallel_tool_calls`: 固定为 `true`
-   - `reasoning.effort`: 默认 `medium`
+   - `reasoning.effort`: 根据模型配置和请求验证后设置
    - `reasoning.summary`: 固定为 `auto`
    - `include`: 固定为 `["reasoning.encrypted_content"]`
 
@@ -649,7 +697,20 @@ gpt2api-node/
 
 ## 更新日志
 
-### 最新版本
+### v1.1.0 (2026-03-25)
+
+**新功能**
+- ✅ 支持客户端身份 headers 透传（Originator, Version, X-Codex-Turn-Metadata, X-Client-Request-Id）
+- ✅ 支持每个模型独立的 Thinking 配置（reasoning effort levels）
+- ✅ 更新 User-Agent 到 codex_cli_rs/0.116.0
+- ✅ 自动验证 reasoning_effort 是否在模型允许的 levels 中
+
+**改进**
+- 🔧 优化请求 headers 构建逻辑，支持更灵活的客户端配置
+- 🔧 改进模型配置加载机制，支持 thinking 配置
+- 📝 更新文档，添加 Thinking 配置说明和使用示例
+
+### v1.0.0
 
 - ✅ 完整实现 OpenAI Chat Completions API 转换
 - ✅ 完整实现 Codex Responses API 支持

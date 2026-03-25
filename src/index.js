@@ -55,8 +55,8 @@ try {
 } catch (err) {
   console.warn('⚠ 无法加载模型列表，使用默认列表');
   modelsList = [
-    { id: 'gpt-5.3-codex', object: 'model', created: 1770307200, owned_by: 'openai' },
-    { id: 'gpt-5.2-codex', object: 'model', created: 1765440000, owned_by: 'openai' }
+    { id: 'gpt-5.4', object: 'model', created: 1772697600, owned_by: 'openai' },
+    { id: 'gpt-5.3-codex', object: 'model', created: 1770307200, owned_by: 'openai' }
   ];
 }
 
@@ -146,6 +146,9 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
   const triedTokenIds = new Set();
   let lastError = null;
 
+  // 查找模型配置
+  const modelConfig = modelsList.find(m => m.id === model);
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const result = getAvailableTokenManager(triedTokenIds);
     if (!result) {
@@ -157,7 +160,7 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     triedTokenIds.add(tokenId);
 
     try {
-      const proxyHandler = new ProxyHandler(manager);
+      const proxyHandler = new ProxyHandler(manager, modelConfig);
       let usage;
 
       if (isStream) {
@@ -250,6 +253,9 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
   const triedTokenIds = new Set();
   let lastError = null;
 
+  // 查找模型配置
+  const modelConfig = modelsList.find(m => m.id === model);
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const result = getAvailableTokenManager(triedTokenIds);
     if (!result) break;
@@ -258,7 +264,7 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
     triedTokenIds.add(tokenId);
 
     try {
-      const proxyHandler = new ProxyHandler(manager);
+      const proxyHandler = new ProxyHandler(manager, modelConfig);
       const usage = await proxyHandler.handlePassthrough(req, res);
 
       Token.updateUsage(tokenId, true);

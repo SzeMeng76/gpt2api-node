@@ -1,62 +1,110 @@
 [
   {
+    "id": "gpt-5.4",
+    "object": "model",
+    "created": 1772697600,
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
+  },
+  {
+    "id": "gpt-5.4-2026-03-05",
+    "object": "model",
+    "created": 1772697600,
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
+  },
+  {
     "id": "gpt-5.3-codex",
     "object": "model",
     "created": 1770307200,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5.2",
     "object": "model",
     "created": 1765440000,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5.2-codex",
     "object": "model",
     "created": 1765440000,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5.1",
     "object": "model",
     "created": 1762905600,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5.1-codex",
     "object": "model",
     "created": 1762905600,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5.1-codex-mini",
     "object": "model",
     "created": 1762905600,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5.1-codex-max",
     "object": "model",
     "created": 1763424000,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5",
     "object": "model",
     "created": 1754524800,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5-codex",
     "object": "model",
     "created": 1757894400,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   },
   {
     "id": "gpt-5-codex-mini",
     "object": "model",
     "created": 1762473600,
-    "owned_by": "openai"
+    "owned_by": "openai",
+    "thinking": {
+      "levels": ["low", "medium", "high"]
+    }
   }
 ]

@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
-const CODEX_CLIENT_VERSION = '0.101.0';
-const CODEX_USER_AGENT = 'codex_cli_rs/0.101.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464';
+const CODEX_USER_AGENT = 'codex_cli_rs/0.116.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464';
+const CODEX_ORIGINATOR = 'codex_cli_rs';
 
 const RETRYABLE_STATUS = new Set([401, 403, 429, 500, 502, 503, 504]);
 
@@ -21,8 +21,9 @@ export class ProxyError extends Error {
  * 代理处理器
  */
 class ProxyHandler {
-  constructor(tokenManager) {
+  constructor(tokenManager, modelConfig = null) {
     this.tokenManager = tokenManager;
+    this.modelConfig = modelConfig; // 模型配置（包含 thinking 支持信息）
   }
 
   /**
@@ -265,19 +266,45 @@ class ProxyHandler {
 
     // 构建 Codex 请求 - 注意：Codex 不支持 temperature, top_p, max_tokens 等参数
     const codexRequest = {
-      model: model || 'gpt-5.3-codex',
+      model: model || 'gpt-5.4',
       input,
       instructions: '',  // 保持为空字符串
       stream,
       store: false,  // 必须设置为 false
       parallel_tool_calls: true,
-      reasoning: {
-        effort: rest.reasoning_effort || 'medium',
-        summary: 'auto'
-      },
       include: ['reasoning.encrypted_content'],
       _toolNameMap: toolNameMap  // 保存映射表供响应转换使用
     };
+
+    // 处理 reasoning - 根据模型配置验证和设置
+    if (this.modelConfig?.thinking) {
+      const thinkingConfig = this.modelConfig.thinking;
+      const requestedEffort = rest.reasoning_effort || 'medium';
+
+      // 验证 reasoning_effort 是否在允许的 levels 中
+      if (thinkingConfig.levels && Array.isArray(thinkingConfig.levels)) {
+        if (thinkingConfig.levels.includes(requestedEffort)) {
+          codexRequest.reasoning = {
+            effort: requestedEffort,
+            summary: 'auto'
+          };
+        } else {
+          // 使用默认值（第一个 level 或 'medium'）
+          const defaultEffort = thinkingConfig.levels[0] || 'medium';
+          codexRequest.reasoning = {
+            effort: defaultEffort,
+            summary: 'auto'
+          };
+          console.log(`[Reasoning] 请求的 effort "${requestedEffort}" 不在允许列表中，使用默认值 "${defaultEffort}"`);
+        }
+      }
+    } else {
+      // 模型没有 thinking 配置，使用默认行为
+      codexRequest.reasoning = {
+        effort: rest.reasoning_effort || 'medium',
+        summary: 'auto'
+      };
+    }
 
     // 处理 tools - 需要扁平化 function 字段并缩短名称
     if (rest.tools !== undefined) {
@@ -668,6 +695,40 @@ class ProxyHandler {
   }
 
   /**
+   * 构建请求 headers（支持透传客户端身份 headers）
+   */
+  buildRequestHeaders(req, accessToken) {
+    const headers = {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      'User-Agent': CODEX_USER_AGENT,
+      'Openai-Beta': 'responses=experimental',
+      'Session_id': this.generateSessionId()
+    };
+
+    // 透传客户端身份 headers（如果客户端提供）
+    const clientHeaders = req.headers || {};
+
+    // Version - 透传客户端版本，如果没有则留空
+    headers['Version'] = clientHeaders['version'] || '';
+
+    // Originator - 透传客户端来源，如果没有则使用默认值
+    headers['Originator'] = clientHeaders['originator'] || CODEX_ORIGINATOR;
+
+    // X-Codex-Turn-Metadata - 透传
+    if (clientHeaders['x-codex-turn-metadata']) {
+      headers['X-Codex-Turn-Metadata'] = clientHeaders['x-codex-turn-metadata'];
+    }
+
+    // X-Client-Request-Id - 透传
+    if (clientHeaders['x-client-request-id']) {
+      headers['X-Client-Request-Id'] = clientHeaders['x-client-request-id'];
+    }
+
+    return headers;
+  }
+
+  /**
    * 处理流式请求
    */
   async handleStreamRequest(req, res) {
@@ -688,19 +749,15 @@ class ProxyHandler {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
+      // 构建请求 headers（支持透传客户端身份）
+      const headers = this.buildRequestHeaders(req, accessToken);
+      headers['Accept'] = 'text/event-stream';
+
       const response = await axios.post(
         `${CODEX_BASE_URL}/responses`,
         codexRequest,
         {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-            'User-Agent': CODEX_USER_AGENT,
-            'Version': CODEX_CLIENT_VERSION,
-            'Openai-Beta': 'responses=experimental',
-            'Session_id': this.generateSessionId(),
-            'Accept': 'text/event-stream'
-          },
+          headers,
           responseType: 'stream',
           timeout: 300000 // 5 分钟超时
         }
@@ -792,14 +849,7 @@ class ProxyHandler {
         `${CODEX_BASE_URL}/responses`,
         codexRequest,
         {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-            'User-Agent': CODEX_USER_AGENT,
-            'Version': CODEX_CLIENT_VERSION,
-            'Openai-Beta': 'responses=experimental',
-            'Session_id': this.generateSessionId()
-          },
+          headers: this.buildRequestHeaders(req, accessToken),
           responseType: 'stream',
           timeout: 300000
         }
@@ -916,15 +966,7 @@ class ProxyHandler {
 
       const clientWantsStream = req.body.stream !== false;
 
-      const headers = {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'User-Agent': CODEX_USER_AGENT,
-        'Version': CODEX_CLIENT_VERSION,
-        'Openai-Beta': 'responses=experimental',
-        'Session_id': this.generateSessionId()
-      };
-
+      const headers = this.buildRequestHeaders(req, accessToken);
       headers['Accept'] = 'text/event-stream';
 
       console.log('[Passthrough] Request body:', JSON.stringify(requestBody).slice(0, 500));
