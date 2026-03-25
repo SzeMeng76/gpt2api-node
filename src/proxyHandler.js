@@ -162,7 +162,8 @@ class ProxyHandler {
     if (rest.tools !== undefined) {
       codexRequest.tools = this.normalizeTools(rest.tools);
     }
-    if (rest.tool_choice !== undefined) {
+    // 只在 tool_choice 不是 "auto" 时才添加（Codex 不支持 "auto"）
+    if (rest.tool_choice !== undefined && rest.tool_choice !== 'auto') {
       codexRequest.tool_choice = this.normalizeToolChoice(rest.tool_choice);
     }
 
