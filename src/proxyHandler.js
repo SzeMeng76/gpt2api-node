@@ -139,19 +139,20 @@ class ProxyHandler {
       };
     });
 
-    // 移除 Codex 不支持的参数
+    // 构建 Codex 请求 - 注意：Codex 不支持 temperature, top_p, max_tokens 等参数
     const codexRequest = {
       model: model || 'gpt-5.3-codex',
       input,
       instructions: instructions || '',
       stream,
-      store: false  // 必须设置为 false
+      store: false,  // 必须设置为 false
+      parallel_tool_calls: true,
+      reasoning: {
+        effort: rest.reasoning_effort || 'medium',
+        summary: 'auto'
+      },
+      include: ['reasoning.encrypted_content']
     };
-
-    // 只保留 Codex 支持的参数
-    if (rest.temperature !== undefined) codexRequest.temperature = rest.temperature;
-    if (rest.max_tokens !== undefined) codexRequest.max_tokens = rest.max_tokens;
-    if (rest.top_p !== undefined) codexRequest.top_p = rest.top_p;
 
     // 处理 tools 和 tool_choice，并规范化工具类型
     if (rest.tools !== undefined) {
@@ -159,6 +160,23 @@ class ProxyHandler {
     }
     if (rest.tool_choice !== undefined) {
       codexRequest.tool_choice = this.normalizeToolChoice(rest.tool_choice);
+    }
+
+    // 处理 response_format
+    if (rest.response_format !== undefined) {
+      const rf = rest.response_format;
+      if (rf.type === 'text') {
+        codexRequest.text = { format: { type: 'text' } };
+      } else if (rf.type === 'json_schema' && rf.json_schema) {
+        codexRequest.text = {
+          format: {
+            type: 'json_schema',
+            name: rf.json_schema.name,
+            strict: rf.json_schema.strict,
+            schema: rf.json_schema.schema
+          }
+        };
+      }
     }
 
     return codexRequest;
@@ -408,10 +426,10 @@ class ProxyHandler {
     try {
       const openaiRequest = req.body;
       // console.log('收到请求:', JSON.stringify(openaiRequest, null, 2));
-      
+
       const codexRequest = this.transformRequest({ ...openaiRequest, stream: true });
       // console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
-      
+
       const accessToken = await this.tokenManager.getValidToken();
 
       const response = await axios.post(
@@ -426,44 +444,59 @@ class ProxyHandler {
             'Openai-Beta': 'responses=experimental',
             'Session_id': this.generateSessionId()
           },
+          responseType: 'stream',
           timeout: 300000
         }
       );
 
-      // 处理响应数据 - 查找 response.completed 事件
+      // 处理流式响应数据 - 查找 response.completed 事件
       let finalResponse = null;
-      const lines = response.data.split('\n');
-      
-      for (const line of lines) {
-        if (line.trim().startsWith('data:')) {
-          const data = line.slice(5).trim();
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.type === 'response.completed') {
-              finalResponse = parsed;
-              break;
+      let buffer = '';
+
+      return new Promise((resolve, reject) => {
+        response.data.on('data', (chunk) => {
+          buffer += chunk.toString();
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.trim().startsWith('data:')) {
+              const data = line.slice(5).trim();
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.type === 'response.completed') {
+                  finalResponse = parsed;
+                }
+              } catch (e) {
+                // 忽略解析错误
+              }
             }
-          } catch (e) {
-            // 忽略解析错误
           }
-        }
-      }
+        });
 
-      if (!finalResponse) {
-        throw new Error('未收到完整响应');
-      }
+        response.data.on('end', () => {
+          if (!finalResponse) {
+            reject(new Error('未收到完整响应'));
+            return;
+          }
 
-      // 转换为 OpenAI 格式
-      const transformed = this.transformResponse(finalResponse, openaiRequest.model, false);
-      res.json(transformed);
+          // 转换为 OpenAI 格式
+          const transformed = this.transformResponse(finalResponse, openaiRequest.model, false);
+          res.json(transformed);
 
-      // 返回 usage 数据
-      const u = finalResponse.response?.usage || {};
-      return {
-        input_tokens: u.input_tokens || 0,
-        output_tokens: u.output_tokens || 0,
-        total_tokens: u.total_tokens || 0
-      };
+          // 返回 usage 数据
+          const u = finalResponse.response?.usage || {};
+          resolve({
+            input_tokens: u.input_tokens || 0,
+            output_tokens: u.output_tokens || 0,
+            total_tokens: u.total_tokens || 0
+          });
+        });
+
+        response.data.on('error', (error) => {
+          reject(new ProxyError(error.message, 500, true));
+        });
+      });
 
     } catch (error) {
       const status = error.response?.status || 500;
@@ -480,7 +513,12 @@ class ProxyHandler {
   async handlePassthrough(req, res) {
     try {
       const accessToken = await this.tokenManager.getValidToken();
-      const requestBody = { instructions: '', store: false, ...req.body, stream: true }; // Codex API requires stream: true, instructions, store: false
+      // Ensure required fields are present, but don't override user's stream preference
+      const requestBody = {
+        instructions: req.body.instructions || '',
+        store: false,
+        ...req.body
+      };
       const clientWantsStream = req.body.stream !== false;
 
       const headers = {
