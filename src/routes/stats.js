@@ -194,14 +194,40 @@ router.get('/charts', (req, res) => {
 // 获取账号统计
 router.get('/accounts', (req, res) => {
   try {
+    const range = req.query.range || '24h';
     const tokens = Token.getAll();
+
+    // 根据时间范围计算时间戳（使用本地时间）
+    let timeFilter = '';
+    const now = new Date();
+    if (range === '24h') {
+      const time = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    } else if (range === '7d') {
+      const time = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    } else if (range === '30d') {
+      const time = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    }
+    // 'all' 不加时间过滤
 
     const accountStats = tokens.map(token => {
       // 计算该 token 的平均响应时间
       const avgResponseTime = db.prepare(`
         SELECT COALESCE(AVG(response_time), 0) as avg_response_time
         FROM api_logs
-        WHERE token_id = ? AND status_code >= 200 AND status_code < 300 AND response_time > 0
+        WHERE token_id = ? AND status_code >= 200 AND status_code < 300 AND response_time > 0 ${timeFilter}
+      `).get(token.id);
+
+      // 计算该 token 的 token 使用量
+      const tokenUsage = db.prepare(`
+        SELECT
+          COALESCE(SUM(input_tokens), 0) as input_tokens,
+          COALESCE(SUM(output_tokens), 0) as output_tokens,
+          COALESCE(SUM(total_tokens), 0) as total_tokens
+        FROM api_logs
+        WHERE token_id = ? AND status_code >= 200 AND status_code < 300 ${timeFilter}
       `).get(token.id);
 
       return {
@@ -211,6 +237,11 @@ router.get('/accounts', (req, res) => {
           ? Math.round(((token.success_requests || 0) / token.total_requests) * 100)
           : 100,
         avgResponseTime: Math.round(avgResponseTime.avg_response_time),
+        tokenUsage: {
+          input: tokenUsage.input_tokens,
+          output: tokenUsage.output_tokens,
+          total: tokenUsage.total_tokens
+        },
         lastUsed: token.last_used_at
       };
     }).filter(m => m.requests > 0);
@@ -227,23 +258,22 @@ router.get('/logs', (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const range = req.query.range || '24h';
-    
+
     const logs = ApiLog.getRecent(limit);
-    
+
     // 获取所有 API Keys 用于查找名称
     const apiKeys = ApiKey.getAll();
     const apiKeyMap = {};
     apiKeys.forEach(key => {
       apiKeyMap[key.id] = key.name || `Key #${key.id}`;
     });
-    
-    // 格式化日志数据
+
+    // 格式化日志数据（使用真实的 response_time）
     const formattedLogs = logs.map(log => ({
       ...log,
-      api_key_name: log.api_key_id ? (apiKeyMap[log.api_key_id] || `Key #${log.api_key_id}`) : '-',
-      response_time: Math.floor(Math.random() * 500) + 50
+      api_key_name: log.api_key_id ? (apiKeyMap[log.api_key_id] || `Key #${log.api_key_id}`) : '-'
     }));
-    
+
     res.json(formattedLogs);
   } catch (error) {
     console.error('获取日志失败:', error);

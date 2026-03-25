@@ -1047,18 +1047,24 @@ async function loadModelStats() {
   try {
     const response = await fetch(`/admin/stats/accounts?range=${currentTimeRange}`);
     const data = await response.json();
-    
+
     const tbody = document.getElementById('accountStatsTable');
-    
+
     if (data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-500">暂无数据</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-500">暂无数据</td></tr>';
       return;
     }
-    
+
     tbody.innerHTML = data.map(account => `
       <tr class="border-b border-gray-100 hover:bg-gray-50">
         <td class="py-4 px-4 text-sm font-medium text-gray-900">${escapeHtml(account.name)}</td>
         <td class="py-4 px-4 text-sm text-gray-600">${account.requests}</td>
+        <td class="py-4 px-4">
+          <div class="text-xs">
+            <div class="text-gray-900 font-medium">${(account.tokenUsage?.total || 0).toLocaleString()} tokens</div>
+            <div class="text-gray-500">输入: ${(account.tokenUsage?.input || 0).toLocaleString()} · 输出: ${(account.tokenUsage?.output || 0).toLocaleString()}</div>
+          </div>
+        </td>
         <td class="py-4 px-4">
           <span class="text-sm font-medium ${account.successRate >= 95 ? 'text-green-600' : account.successRate >= 80 ? 'text-yellow-600' : 'text-red-600'}">
             ${account.successRate}%

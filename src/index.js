@@ -11,6 +11,7 @@ import TokenManager from './tokenManager.js';
 import ProxyHandler from './proxyHandler.js';
 import { ProxyError } from './proxyHandler.js';
 import { authenticateApiKey, authenticateAdmin } from './middleware/auth.js';
+import { startCleanupSchedule } from './cleanup.js';
 
 // 导入路由
 import authRoutes from './routes/auth.js';
@@ -441,4 +442,7 @@ app.listen(PORT, () => {
   console.log(`API 接口: http://localhost:${PORT}/v1/chat/completions`);
   console.log(`\n首次使用请运行: npm run init-db`);
   console.log(`默认账户: admin / admin123\n`);
+
+  // 启动日志清理定时任务
+  startCleanupSchedule();
 });

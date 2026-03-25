@@ -21,7 +21,7 @@ export class User {
 
   static async updatePassword(id, newPassword) {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    db.prepare('UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+    db.prepare('UPDATE users SET password = ?, updated_at = datetime(\'now\', \'localtime\') WHERE id = ?').run(
       hashedPassword,
       id
     );
@@ -51,7 +51,7 @@ export class ApiKey {
   }
 
   static updateUsage(id) {
-    db.prepare('UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+    db.prepare('UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = datetime(\'now\', \'localtime\') WHERE id = ?').run(id);
   }
 
   static toggleActive(id, isActive) {
@@ -121,7 +121,7 @@ export class Token {
         UPDATE tokens
         SET total_requests = total_requests + 1,
             success_requests = success_requests + 1,
-            last_used_at = CURRENT_TIMESTAMP
+            last_used_at = datetime('now', 'localtime')
         WHERE id = ?
       `).run(id);
     } else {
@@ -129,7 +129,7 @@ export class Token {
         UPDATE tokens
         SET total_requests = total_requests + 1,
             failed_requests = failed_requests + 1,
-            last_used_at = CURRENT_TIMESTAMP
+            last_used_at = datetime('now', 'localtime')
         WHERE id = ?
       `).run(id);
     }
@@ -141,7 +141,7 @@ export class Token {
       SET quota_total = ?,
           quota_used = ?,
           quota_remaining = ?,
-          last_quota_check = CURRENT_TIMESTAMP
+          last_quota_check = datetime('now', 'localtime')
       WHERE id = ?
     `).run(
       quota.total || 0,
@@ -202,7 +202,7 @@ export class Token {
       UPDATE tokens
       SET status = ?,
           status_message = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = datetime('now', 'localtime')
       WHERE id = ?
     `).run(status, statusMessage, id);
   }
@@ -211,7 +211,7 @@ export class Token {
     db.prepare(`
       UPDATE tokens
       SET error_count = error_count + 1,
-          last_error_at = CURRENT_TIMESTAMP
+          last_error_at = datetime('now', 'localtime')
       WHERE id = ?
     `).run(id);
   }
@@ -247,9 +247,10 @@ export class Token {
 
 export class ApiLog {
   static create(data) {
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19); // 本地时间格式
     db.prepare(`
-      INSERT INTO api_logs (api_key_id, token_id, model, endpoint, status_code, error_message, input_tokens, output_tokens, total_tokens, response_time)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO api_logs (api_key_id, token_id, model, endpoint, status_code, error_message, input_tokens, output_tokens, total_tokens, response_time, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `).run(
       data.api_key_id || null,
       data.token_id || null,
@@ -295,8 +296,8 @@ export class Settings {
   static set(key, value) {
     db.prepare(`
       INSERT INTO settings (key, value, updated_at)
-      VALUES (?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP
+      VALUES (?, ?, datetime('now', 'localtime'))
+      ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now', 'localtime')
     `).run(key, value, value);
   }
 
