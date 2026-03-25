@@ -374,7 +374,10 @@ async function loadTokens(page = 1) {
         </td>
         <td class="py-4 px-4">
           <div class="text-sm font-medium text-gray-900">${escapeHtml(token.name || token.email || token.account_id || '-')}</div>
-          <div class="text-xs text-gray-500">${isActiveText}</div>
+          <div class="text-xs text-gray-500">
+            ${isActiveText}
+            ${token.plan_type ? `<span class="ml-2 px-2 py-0.5 rounded text-xs font-medium ${getPlanTypeBadgeClass(token.plan_type)}">${getPlanTypeLabel(token.plan_type)}</span>` : ''}
+          </div>
         </td>
         <td class="py-4 px-4">
           <div title="${statusTooltip}" class="cursor-help">
@@ -632,23 +635,25 @@ async function handleImportTokens() {
 
 async function handleCreateToken(event) {
   event.preventDefault();
-  
+
   const name = document.getElementById('tokenName').value;
+  const plan_type = document.getElementById('planType').value;
   const access_token = document.getElementById('accessToken').value;
   const refresh_token = document.getElementById('refreshToken').value;
-  
+
   try {
     const response = await fetch('/admin/tokens', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, access_token, refresh_token })
+      body: JSON.stringify({ name, plan_type, access_token, refresh_token })
     });
-    
+
     const data = await response.json();
-    
+
     if (response.ok) {
       document.getElementById('createTokenModal').classList.add('hidden');
       document.getElementById('tokenName').value = '';
+      document.getElementById('planType').value = 'free';
       document.getElementById('accessToken').value = '';
       document.getElementById('refreshToken').value = '';
       alert('Token 添加成功！');
@@ -1175,4 +1180,24 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function getPlanTypeLabel(planType) {
+  const labels = {
+    'free': 'Free',
+    'plus': 'Plus',
+    'team': 'Team',
+    'enterprise': 'Enterprise'
+  };
+  return labels[planType] || planType;
+}
+
+function getPlanTypeBadgeClass(planType) {
+  const classes = {
+    'free': 'bg-gray-100 text-gray-700',
+    'plus': 'bg-purple-100 text-purple-700',
+    'team': 'bg-blue-100 text-blue-700',
+    'enterprise': 'bg-green-100 text-green-700'
+  };
+  return classes[planType] || 'bg-gray-100 text-gray-700';
 }

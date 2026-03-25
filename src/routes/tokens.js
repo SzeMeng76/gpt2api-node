@@ -45,23 +45,36 @@ router.get('/', (req, res) => {
 // 创建 Token
 router.post('/', async (req, res) => {
   try {
-    const { name, access_token, refresh_token, id_token, email, account_id, expired_at, expired, last_refresh_at, last_refresh } = req.body;
+    const { name, access_token, refresh_token, id_token, email, account_id, expired_at, expired, last_refresh_at, last_refresh, plan_type } = req.body;
 
     // 验证必需字段
     if (!access_token || !refresh_token) {
       return res.status(400).json({ error: 'access_token 和 refresh_token 是必需的' });
     }
 
+    // 从 access_token 解析信息
+    let parsedEmail = email;
+    let parsedAccountId = account_id;
+
+    if (!parsedEmail || !parsedAccountId) {
+      const tokenInfo = quotaChecker.parseAccessToken(access_token);
+      if (tokenInfo) {
+        parsedEmail = parsedEmail || tokenInfo.email;
+        parsedAccountId = parsedAccountId || tokenInfo.account_id;
+      }
+    }
+
     // 创建 Token 记录（支持旧字段名兼容）
     const id = Token.create({
-      name: name || '未命名账户',
-      email,
-      account_id,
+      name: name || parsedEmail || parsedAccountId || '未命名账户',
+      email: parsedEmail,
+      account_id: parsedAccountId,
       access_token,
       refresh_token,
       id_token,
       expired_at: expired_at || expired || null,
-      last_refresh_at: last_refresh_at || last_refresh || null
+      last_refresh_at: last_refresh_at || last_refresh || null,
+      plan_type: plan_type || 'free'
     });
 
     res.json({
@@ -99,16 +112,29 @@ router.post('/import', async (req, res) => {
           continue;
         }
 
+        // 从 access_token 解析信息
+        let parsedEmail = token.email;
+        let parsedAccountId = token.account_id;
+
+        if (!parsedEmail || !parsedAccountId) {
+          const tokenInfo = quotaChecker.parseAccessToken(token.access_token);
+          if (tokenInfo) {
+            parsedEmail = parsedEmail || tokenInfo.email;
+            parsedAccountId = parsedAccountId || tokenInfo.account_id;
+          }
+        }
+
         // 创建 Token 记录（支持旧字段名兼容）
         Token.create({
-          name: token.name || token.email || token.account_id || `导入账户 ${i + 1}`,
-          email: token.email,
-          account_id: token.account_id,
+          name: token.name || parsedEmail || parsedAccountId || `导入账户 ${i + 1}`,
+          email: parsedEmail,
+          account_id: parsedAccountId,
           access_token: token.access_token,
           refresh_token: token.refresh_token,
           id_token: token.id_token,
           expired_at: token.expired_at || token.expired || null,
-          last_refresh_at: token.last_refresh_at || token.last_refresh || null
+          last_refresh_at: token.last_refresh_at || token.last_refresh || null,
+          plan_type: token.plan_type || 'free'
         });
 
         successCount++;
@@ -235,7 +261,7 @@ router.post('/:id/quota', async (req, res) => {
     const actualUsage = ApiLog.getTokenUsage(id);
 
     // 使用被动检查（基于 ID Token 和使用统计）
-    const checkResult = await quotaChecker.checkQuota(token.access_token, token.id_token, actualUsage.total_tokens);
+    const checkResult = await quotaChecker.checkQuota(token.access_token, token.id_token, actualUsage.total_tokens, token.plan_type);
 
     if (!checkResult.success) {
       // 检查失败，更新错误状态
@@ -304,7 +330,7 @@ router.post('/quota/refresh-all', async (req, res) => {
         const actualUsage = ApiLog.getTokenUsage(token.id);
 
         // 使用被动检查（基于 ID Token 和使用统计）
-        const checkResult = await quotaChecker.checkQuota(token.access_token, token.id_token, actualUsage.total_tokens);
+        const checkResult = await quotaChecker.checkQuota(token.access_token, token.id_token, actualUsage.total_tokens, token.plan_type);
 
         if (!checkResult.success) {
           // 检查失败
