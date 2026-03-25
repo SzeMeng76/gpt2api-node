@@ -96,40 +96,30 @@ class ProxyHandler {
   transformRequest(openaiRequest) {
     const { model, messages, stream = true, stream_options, ...rest } = openaiRequest;
 
-    // 提取 system 消息作为 instructions
-    let instructions = '';
-    const userMessages = [];
-    
-    for (const msg of messages) {
-      if (msg.role === 'system') {
-        // system 消息转为 instructions
-        const content = Array.isArray(msg.content) 
-          ? msg.content.map(c => c.text || c).join('\n')
-          : msg.content;
-        instructions += (instructions ? '\n' : '') + content;
-      } else {
-        // 其他消息保留
-        userMessages.push(msg);
-      }
-    }
+    // 转换消息格式 - system 消息转为 developer 角色
+    const input = messages.map(msg => {
+      let role = msg.role;
 
-    // 转换消息格式
-    const input = userMessages.map(msg => {
-      const contentType = msg.role === 'assistant' ? 'output_text' : 'input_text';
-      
+      // system 角色转换为 developer
+      if (role === 'system') {
+        role = 'developer';
+      }
+
+      const contentType = role === 'assistant' ? 'output_text' : 'input_text';
+
       return {
         type: 'message',
-        role: msg.role,
-        content: Array.isArray(msg.content) 
+        role: role,
+        content: Array.isArray(msg.content)
           ? msg.content.map(c => {
               // 处理不同类型的内容
               if (c.type === 'text') {
                 return { type: contentType, text: c.text || c };
               } else if (c.type === 'image_url') {
                 // OpenAI 的 image_url 转换为 Codex 的 input_image
-                return { 
-                  type: 'input_image', 
-                  image_url: c.image_url?.url || c.image_url 
+                return {
+                  type: 'input_image',
+                  image_url: c.image_url?.url || c.image_url
                 };
               } else {
                 return c;
@@ -143,7 +133,7 @@ class ProxyHandler {
     const codexRequest = {
       model: model || 'gpt-5.3-codex',
       input,
-      instructions: instructions || '',
+      instructions: '',  // 保持为空字符串
       stream,
       store: false,  // 必须设置为 false
       parallel_tool_calls: true,
@@ -351,10 +341,10 @@ class ProxyHandler {
   async handleStreamRequest(req, res) {
     try {
       const openaiRequest = req.body;
-      // console.log('收到请求:', JSON.stringify(openaiRequest, null, 2));
+      console.log('收到请求:', JSON.stringify(openaiRequest, null, 2));
 
       const codexRequest = this.transformRequest(openaiRequest);
-      // console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
+      console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
       
       const accessToken = await this.tokenManager.getValidToken();
 
@@ -453,10 +443,10 @@ class ProxyHandler {
   async handleNonStreamRequest(req, res) {
     try {
       const openaiRequest = req.body;
-      // console.log('收到请求:', JSON.stringify(openaiRequest, null, 2));
+      console.log('收到非流式请求:', JSON.stringify(openaiRequest, null, 2));
 
       const codexRequest = this.transformRequest({ ...openaiRequest, stream: true });
-      // console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
+      console.log('转换后的 Codex 请求:', JSON.stringify(codexRequest, null, 2));
 
       const accessToken = await this.tokenManager.getValidToken();
 
