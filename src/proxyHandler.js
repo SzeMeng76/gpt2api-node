@@ -94,7 +94,20 @@ class ProxyHandler {
    * 转换 OpenAI 格式请求到 Codex 格式
    */
   transformRequest(openaiRequest) {
-    const { model, messages, stream = true, stream_options, ...rest } = openaiRequest;
+    const {
+      model,
+      messages,
+      stream = true,
+      stream_options,
+      // 过滤掉 Codex 不支持的参数
+      max_tokens,
+      temperature,
+      top_p,
+      top_k,
+      max_completion_tokens,
+      reasoningSummary,
+      ...rest
+    } = openaiRequest;
 
     // 转换消息格式 - system 消息转为 developer 角色
     const input = messages.map(msg => {
