@@ -58,7 +58,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/lulistart/gpt2api-node.git
+git clone https://github.com/SzeMeng76/gpt2api-node.git
 cd gpt2api-node
 
 # 安装依赖
@@ -363,8 +363,8 @@ npm run init-db
 
 ## 📞 支持
 
-- GitHub: https://github.com/lulistart/gpt2api-node
-- Issues: https://github.com/lulistart/gpt2api-node/issues
+- GitHub: https://github.com/SzeMeng76/gpt2api-node
+- Issues: https://github.com/SzeMeng76/gpt2api-node/issues
 
 ## 📄 许可证
 

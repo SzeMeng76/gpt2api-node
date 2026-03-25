@@ -2,6 +2,20 @@
 
 基于 Node.js + Express 的 OpenAI Codex 反向代理服务，支持多账号管理、自动刷新 token、负载均衡，提供 OpenAI 兼容的 API 接口和完整的管理后台。
 
+> 本项目基于 [lulistart/gpt2api-node](https://github.com/lulistart/gpt2api-node) 二次开发，感谢原作者的贡献！
+
+## 🎯 新增特性
+
+相比原版，本 fork 新增了以下功能：
+
+- ✨ **原生 Codex CLI 支持** - 新增 `/v1/responses` 端点，完美支持 OpenAI 官方 Codex CLI
+- 🔄 **自动重试机制** - 请求失败时自动切换 token 重试，提高成功率
+- 📊 **真实 Token 用量追踪** - 从 Codex API 响应中提取实际 token 使用量
+- 🔧 **工具类型标准化** - 自动转换 tool 类型以兼容 Codex API 要求
+- 🌐 **xyhelper Token 支持** - 同时支持 OpenAI 原生 OAuth 和 xyhelper token 刷新
+- 🐳 **Docker 支持** - 提供完整的 Docker 和 Docker Compose 配置
+- 🚀 **GitHub Actions CI/CD** - 自动构建并推送 Docker 镜像到 GHCR
+
 ## 界面预览
 
 <table>
@@ -39,10 +53,11 @@
 
 ## 功能特性
 
+### 核心功能
 - ✅ OpenAI Codex 反向代理
 - ✅ 完整的 Web 管理后台
 - ✅ 多账号管理和批量导入
-- ✅ 自动 Token 刷新机制
+- ✅ 自动 Token 刷新机制（支持 OpenAI 原生 + xyhelper）
 - ✅ 负载均衡（轮询/随机/最少使用）
 - ✅ API Key 管理和认证
 - ✅ 请求统计和数据分析
@@ -50,6 +65,11 @@
 - ✅ OpenAI API 兼容接口
 - ✅ 批量删除账号功能
 - ✅ 实时活动记录
+
+### 增强功能
+- 🔄 **请求失败自动重试** - 失败时自动切换到下一个可用 token
+- 📊 **真实用量统计** - 追踪实际 token 消耗量
+- 🛠️ **Codex API 兼容性增强** - 自动处理 API 格式差异
 
 ## 快速开始
 
@@ -59,7 +79,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/lulistart/gpt2api-node.git
+git clone https://github.com/SzeMeng76/gpt2api-node.git
 cd gpt2api-node
 
 # 启动服务
@@ -189,6 +209,26 @@ curl http://localhost:3000/v1/chat/completions \
       {"role": "user", "content": "Hello!"}
     ],
     "stream": true
+  }'
+```
+
+### Codex Responses 接口（原生 CLI 支持）
+
+**端点**: `POST /v1/responses`
+
+此端点专为 OpenAI 官方 Codex CLI 设计，完全兼容原生 API 格式。
+
+**请求示例**:
+
+```bash
+curl http://localhost:3000/v1/responses \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.3-codex",
+    "messages": [
+      {"role": "user", "content": "Write a hello world in Python"}
+    ]
   }'
 ```
 
@@ -402,6 +442,11 @@ gpt2api-node/
 ## 许可证
 
 MIT License
+
+## 致谢
+
+- 原项目：[lulistart/gpt2api-node](https://github.com/lulistart/gpt2api-node)
+- 感谢所有贡献者的支持
 
 ## 相关项目
 
