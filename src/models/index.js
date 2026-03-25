@@ -247,10 +247,14 @@ export class Token {
 
 export class ApiLog {
   static create(data) {
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 19); // 本地时间格式
+    // 计算本地时间（UTC + 8小时）
+    const now = new Date();
+    const localTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localTimeStr = localTime.toISOString().replace('T', ' ').substring(0, 19);
+
     db.prepare(`
       INSERT INTO api_logs (api_key_id, token_id, model, endpoint, status_code, error_message, input_tokens, output_tokens, total_tokens, response_time, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       data.api_key_id || null,
       data.token_id || null,
@@ -261,7 +265,8 @@ export class ApiLog {
       data.input_tokens || 0,
       data.output_tokens || 0,
       data.total_tokens || 0,
-      data.response_time || 0
+      data.response_time || 0,
+      localTimeStr
     );
   }
 
