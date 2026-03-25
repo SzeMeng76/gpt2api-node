@@ -40,11 +40,35 @@ router.get('/', (req, res) => {
 router.get('/analytics', (req, res) => {
   try {
     const range = req.query.range || '24h';
-    const tokens = Token.getAll();
 
-    const totalRequests = tokens.reduce((sum, t) => sum + (t.total_requests || 0), 0);
-    const successRequests = tokens.reduce((sum, t) => sum + (t.success_requests || 0), 0);
-    const failedRequests = tokens.reduce((sum, t) => sum + (t.failed_requests || 0), 0);
+    // 根据时间范围计算时间戳
+    let timeFilter = '';
+    const now = new Date();
+    if (range === '24h') {
+      const time = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    } else if (range === '7d') {
+      const time = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    } else if (range === '30d') {
+      const time = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      timeFilter = `AND datetime(created_at) >= datetime('${time.toISOString()}')`;
+    }
+    // 'all' 不加时间过滤
+
+    // 从 api_logs 统计请求数（根据时间范围）
+    const requestStats = db.prepare(`
+      SELECT
+        COUNT(*) as total_requests,
+        SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as success_requests,
+        SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as failed_requests
+      FROM api_logs
+      WHERE 1=1 ${timeFilter}
+    `).get();
+
+    const totalRequests = requestStats.total_requests || 0;
+    const successRequests = requestStats.success_requests || 0;
+    const failedRequests = requestStats.failed_requests || 0;
 
     // 从 api_logs 获取 token 使用统计
     const tokenStats = db.prepare(`
@@ -53,14 +77,14 @@ router.get('/analytics', (req, res) => {
         COALESCE(SUM(output_tokens), 0) as total_output_tokens,
         COALESCE(SUM(total_tokens), 0) as total_tokens
       FROM api_logs
-      WHERE status_code >= 200 AND status_code < 300
+      WHERE status_code >= 200 AND status_code < 300 ${timeFilter}
     `).get();
 
     // 计算平均响应时间
     const avgResponseTimeResult = db.prepare(`
       SELECT COALESCE(AVG(response_time), 0) as avg_response_time
       FROM api_logs
-      WHERE status_code >= 200 AND status_code < 300 AND response_time > 0
+      WHERE status_code >= 200 AND status_code < 300 AND response_time > 0 ${timeFilter}
     `).get();
 
     // 按模型统计费用（过滤掉 0 token 的）
@@ -74,6 +98,7 @@ router.get('/analytics', (req, res) => {
       FROM api_logs
       WHERE status_code >= 200 AND status_code < 300
         AND total_tokens > 0
+        ${timeFilter}
       GROUP BY model
       ORDER BY total_tokens DESC
     `).all();
@@ -213,6 +238,15 @@ router.get('/accounts', (req, res) => {
     // 'all' 不加时间过滤
 
     const accountStats = tokens.map(token => {
+      // 计算该 token 的请求统计（根据时间范围）
+      const requestStats = db.prepare(`
+        SELECT
+          COUNT(*) as total_requests,
+          SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as success_requests
+        FROM api_logs
+        WHERE token_id = ? ${timeFilter}
+      `).get(token.id);
+
       // 计算该 token 的平均响应时间
       const avgResponseTime = db.prepare(`
         SELECT COALESCE(AVG(response_time), 0) as avg_response_time
@@ -230,11 +264,14 @@ router.get('/accounts', (req, res) => {
         WHERE token_id = ? AND status_code >= 200 AND status_code < 300 ${timeFilter}
       `).get(token.id);
 
+      const totalRequests = requestStats.total_requests || 0;
+      const successRequests = requestStats.success_requests || 0;
+
       return {
         name: token.name || token.email || token.account_id || 'Unknown',
-        requests: token.total_requests || 0,
-        successRate: token.total_requests > 0
-          ? Math.round(((token.success_requests || 0) / token.total_requests) * 100)
+        requests: totalRequests,
+        successRate: totalRequests > 0
+          ? Math.round((successRequests / totalRequests) * 100)
           : 100,
         avgResponseTime: Math.round(avgResponseTime.avg_response_time),
         tokenUsage: {
