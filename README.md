@@ -4,14 +4,38 @@
 
 > 本项目基于 [lulistart/gpt2api-node](https://github.com/lulistart/gpt2api-node) 二次开发，感谢原作者的贡献！
 
-## 🎯 新增特性
+## 🎯 核心特性
 
-相比原版，本 fork 新增了以下功能：
+### API 兼容性
+- ✅ **完整的 OpenAI Chat Completions API 支持** - 100% 兼容 OpenAI SDK
+- ✅ **原生 Codex Responses API 支持** - `/v1/responses` 端点，完美支持 OpenAI 官方 Codex CLI
+- ✅ **流式和非流式响应** - 支持 SSE 流式输出和标准 JSON 响应
+- ✅ **工具调用（Function Calling）** - 完整支持工具定义、调用和响应
+- ✅ **推理内容（Reasoning Content）** - 支持 o1/o3 系列模型的推理过程输出
+- ✅ **结构化输出（Structured Outputs）** - 支持 JSON Schema 格式约束
 
-- ✨ **原生 Codex CLI 支持** - 新增 `/v1/responses` 端点，完美支持 OpenAI 官方 Codex CLI
-- 🔄 **自动重试机制** - 请求失败时自动切换 token 重试，提高成功率
-- 📊 **真实 Token 用量追踪** - 从 Codex API 响应中提取实际 token 使用量
-- 🔧 **工具类型标准化** - 自动转换 tool 类型以兼容 Codex API 要求
+### 请求转换
+- 🔄 **智能参数过滤** - 自动过滤 Codex API 不支持的参数（temperature, top_p, max_tokens 等）
+- 🛠️ **消息格式转换** - 自动转换 system 角色为 developer，处理多模态内容
+- 🔧 **工具定义扁平化** - 自动将嵌套的 function 字段提升到顶层
+- ✂️ **长工具名自动缩短** - 超过 64 字符的工具名自动缩短并在响应时还原
+- 🎯 **工具类型标准化** - 自动转换遗留工具类型（如 web_search_preview → web_search）
+
+### 响应处理
+- 📊 **完整的流式事件支持** - 处理所有 Codex 响应事件类型
+  - `response.output_text.delta` - 文本内容增量
+  - `response.reasoning_summary_text.delta` - 推理内容增量
+  - `response.output_item.added` - 工具调用开始
+  - `response.function_call_arguments.delta` - 工具参数增量
+  - `response.completed` - 响应完成
+- 🔄 **工具名称还原** - 自动将缩短的工具名还原为原始名称
+- ✅ **正确的 finish_reason** - 根据是否有工具调用返回 `tool_calls` 或 `stop`
+- 📈 **真实 Token 用量追踪** - 从 Codex API 响应中提取实际 token 使用量
+
+### 系统功能
+- 🔄 **自动重试机制** - 请求失败时自动切换 token 重试，最多重试 3 次
+- ⚖️ **负载均衡** - 支持轮询、随机、最少使用三种策略
+- 🔑 **多账号管理** - 批量导入、手动添加、自动刷新
 - 🌐 **xyhelper Token 支持** - 同时支持 OpenAI 原生 OAuth 和 xyhelper token 刷新
 - 🐳 **Docker 支持** - 提供完整的 Docker 和 Docker Compose 配置
 - 🚀 **GitHub Actions CI/CD** - 自动构建并推送 Docker 镜像到 GHCR
@@ -53,23 +77,28 @@
 
 ## 功能特性
 
-### 核心功能
-- ✅ OpenAI Codex 反向代理
-- ✅ 完整的 Web 管理后台
-- ✅ 多账号管理和批量导入
-- ✅ 自动 Token 刷新机制（支持 OpenAI 原生 + xyhelper）
-- ✅ 负载均衡（轮询/随机/最少使用）
+### 管理后台
+- ✅ 完整的 Web 管理界面
+- ✅ 仪表盘和实时统计
 - ✅ API Key 管理和认证
+- ✅ 多账号管理和批量导入
 - ✅ 请求统计和数据分析
-- ✅ 支持流式和非流式响应
-- ✅ OpenAI API 兼容接口
-- ✅ 批量删除账号功能
 - ✅ 实时活动记录
+- ✅ 系统设置和配置
 
-### 增强功能
-- 🔄 **请求失败自动重试** - 失败时自动切换到下一个可用 token
-- 📊 **真实用量统计** - 追踪实际 token 消耗量
-- 🛠️ **Codex API 兼容性增强** - 自动处理 API 格式差异
+### Token 管理
+- 🔄 自动 Token 刷新（支持 OpenAI 原生 + xyhelper）
+- 📊 实时额度查询和更新
+- 🔀 智能负载均衡（轮询/随机/最少使用）
+- 📈 使用统计和成功率追踪
+- 🗑️ 批量删除和管理
+
+### API 功能
+- 🌐 OpenAI 兼容接口（`/v1/chat/completions`）
+- 🔧 Codex 原生接口（`/v1/responses`）
+- 📋 模型列表接口（`/v1/models`）
+- ❤️ 健康检查接口（`/health`）
+- 🔐 API Key 认证和权限控制
 
 ## 快速开始
 
@@ -172,9 +201,19 @@ npm run dev
 
 ## API 接口
 
-### 聊天完成接口
+### 1. Chat Completions 接口（OpenAI 兼容）
 
 **端点**: `POST /v1/chat/completions`
+
+完全兼容 OpenAI Chat Completions API，支持所有标准功能。
+
+**支持的功能**:
+- ✅ 流式和非流式响应
+- ✅ 工具调用（Function Calling）
+- ✅ 推理内容（Reasoning Content）
+- ✅ 结构化输出（JSON Schema）
+- ✅ 多模态输入（文本、图片）
+- ✅ 多轮对话
 
 **请求头**:
 ```
@@ -182,7 +221,7 @@ Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
-**请求示例**:
+**基础请求示例**:
 
 ```bash
 curl http://localhost:3000/v1/chat/completions \
@@ -197,7 +236,7 @@ curl http://localhost:3000/v1/chat/completions \
   }'
 ```
 
-**流式请求**:
+**流式请求示例**:
 
 ```bash
 curl http://localhost:3000/v1/chat/completions \
@@ -206,17 +245,54 @@ curl http://localhost:3000/v1/chat/completions \
   -d '{
     "model": "gpt-5.3-codex",
     "messages": [
-      {"role": "user", "content": "Hello!"}
+      {"role": "user", "content": "Write a Python function"}
     ],
     "stream": true
   }'
 ```
 
-### Codex Responses 接口（原生 CLI 支持）
+**工具调用示例**:
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.3-codex",
+    "messages": [
+      {"role": "user", "content": "What is the weather in Beijing?"}
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get the current weather",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {"type": "string"}
+            },
+            "required": ["location"]
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto"
+  }'
+```
+
+### 2. Codex Responses 接口（原生 CLI 支持）
 
 **端点**: `POST /v1/responses`
 
-此端点专为 OpenAI 官方 Codex CLI 设计，完全兼容原生 API 格式。
+此端点专为 OpenAI 官方 Codex CLI 设计，完全兼容原生 Responses API 格式。
+
+**特点**:
+- 🎯 原生 Codex API 格式
+- 🔧 自动参数过滤和转换
+- 🛠️ 工具类型标准化
+- ✂️ 长工具名自动处理
 
 **请求示例**:
 
@@ -226,13 +302,19 @@ curl http://localhost:3000/v1/responses \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-5.3-codex",
-    "messages": [
-      {"role": "user", "content": "Write a hello world in Python"}
+    "input": [
+      {
+        "type": "message",
+        "role": "user",
+        "content": [
+          {"type": "input_text", "text": "Write a hello world in Python"}
+        ]
+      }
     ]
   }'
 ```
 
-### 模型列表
+### 3. 模型列表
 
 **端点**: `GET /v1/models`
 
@@ -240,12 +322,20 @@ curl http://localhost:3000/v1/responses \
 curl http://localhost:3000/v1/models
 ```
 
-### 健康检查
+### 4. 健康检查
 
 **端点**: `GET /health`
 
 ```bash
 curl http://localhost:3000/health
+```
+
+**响应示例**:
+```json
+{
+  "status": "ok",
+  "tokens_count": 5
+}
 ```
 
 ## 支持的模型
@@ -365,10 +455,95 @@ console.log(response.choices[0].message.content);
 创建 `.env` 文件：
 
 ```env
+# 服务端口
 PORT=3000
+
+# 会话密钥（生产环境请修改）
 SESSION_SECRET=your-secret-key-change-in-production
+
+# 负载均衡策略：round-robin（轮询）、random（随机）、least-used（最少使用）
 LOAD_BALANCE_STRATEGY=round-robin
+
+# 模型配置文件路径
 MODELS_FILE=./models.json
+
+# 重试配置
+MAX_RETRIES=3
+RETRY_DELAY_MS=1000
+```
+
+## 技术实现细节
+
+### 请求转换流程
+
+1. **参数过滤** - 自动过滤 Codex API 不支持的参数
+   - 过滤：`temperature`, `top_p`, `top_k`, `max_tokens`, `max_completion_tokens`
+   - 保留：`reasoning_effort`, `response_format`, `tools`, `tool_choice`
+
+2. **消息格式转换**
+   - `system` 角色 → `developer` 角色
+   - `tool` 消息 → `function_call_output` 对象
+   - `assistant` 的 `tool_calls` → 独立的 `function_call` 对象
+   - 跳过只有 `tool_calls` 没有 `content` 的空 `assistant` 消息
+
+3. **工具定义处理**
+   - 扁平化：`{type: "function", function: {name, description, parameters}}` → `{type: "function", name, description, parameters}`
+   - 缩短：超过 64 字符的工具名自动缩短（保留 `mcp__` 前缀和最后一段）
+   - 唯一性：添加数字后缀确保缩短后的名称唯一
+
+4. **必需字段设置**
+   - `stream`: 根据请求设置
+   - `store`: 固定为 `false`
+   - `parallel_tool_calls`: 固定为 `true`
+   - `reasoning.effort`: 默认 `medium`
+   - `reasoning.summary`: 固定为 `auto`
+   - `include`: 固定为 `["reasoning.encrypted_content"]`
+
+### 响应转换流程
+
+#### 流式响应事件处理
+
+| Codex 事件 | OpenAI 事件 | 说明 |
+|-----------|------------|------|
+| `response.created` | - | 保存响应 ID 和创建时间 |
+| `response.output_text.delta` | `delta.content` | 文本内容增量 |
+| `response.reasoning_summary_text.delta` | `delta.reasoning_content` | 推理内容增量 |
+| `response.reasoning_summary_text.done` | `delta.reasoning_content: "\n\n"` | 推理结束换行 |
+| `response.output_item.added` | `delta.tool_calls[].function.name` | 工具调用开始 |
+| `response.function_call_arguments.delta` | `delta.tool_calls[].function.arguments` | 工具参数增量 |
+| `response.function_call_arguments.done` | - | 工具参数完成（回退） |
+| `response.output_item.done` | `delta.tool_calls[]` | 工具调用完成（回退） |
+| `response.completed` | `finish_reason` | 响应完成，设置正确的 finish_reason |
+
+#### 非流式响应处理
+
+1. 从 `response.output` 数组中提取：
+   - `message` 类型 → `content`
+   - `reasoning` 类型 → `reasoning_content`
+   - `function_call` 类型 → `tool_calls[]`
+
+2. 还原工具名称（从缩短名还原为原始名）
+
+3. 设置 `finish_reason`：
+   - 有工具调用 → `tool_calls`
+   - 无工具调用 → `stop`
+
+### 工具名称缩短算法
+
+```javascript
+// 缩短规则
+if (name.length <= 64) return name;
+
+// 保留 mcp__ 前缀和最后一段
+if (name.startsWith('mcp__')) {
+  const lastIdx = name.lastIndexOf('__');
+  return 'mcp__' + name.substring(lastIdx + 2);
+}
+
+// 否则直接截断
+return name.substring(0, 64);
+
+// 确保唯一性：添加 _1, _2, _3 等后缀
 ```
 
 ## 项目结构
@@ -433,11 +608,62 @@ gpt2api-node/
 
 可能是 refresh_token 已过期，需要重新导入新的 token
 
-### API 请求失败
+### API 请求返回 400 错误
+
+1. 检查请求格式是否正确
+2. 查看服务器日志中的详细错误信息
+3. 确认使用的模型名称是否正确
+4. 检查工具定义格式是否符合规范
+
+### API 请求返回 401 错误
 
 1. 检查 API Key 是否正确
-2. 确保有可用的 Token 账号
+2. 确认 API Key 是否已启用
+3. 检查 Authorization 头格式：`Bearer YOUR_API_KEY`
+
+### API 请求返回 500 错误
+
+1. 确保有可用的 Token 账号
+2. 检查 Token 是否已过期
 3. 查看管理后台的请求日志
+4. 检查服务器日志中的错误堆栈
+
+### 工具调用不工作
+
+1. 确认工具定义格式正确（使用 OpenAI 标准格式）
+2. 检查工具名称长度（超过 64 字符会自动缩短）
+3. 查看响应中的 `finish_reason` 是否为 `tool_calls`
+4. 检查服务器日志中的转换过程
+
+### 流式响应中断
+
+1. 检查网络连接稳定性
+2. 确认客户端正确处理 SSE 格式
+3. 查看服务器日志中的错误信息
+4. 检查 Token 是否在响应过程中过期
+
+## 相关项目
+
+- [lulistart/gpt2api-node](https://github.com/lulistart/gpt2api-node) - 原始项目
+- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) - Go 语言实现的参考项目
+
+## 更新日志
+
+### 最新版本
+
+- ✅ 完整实现 OpenAI Chat Completions API 转换
+- ✅ 完整实现 Codex Responses API 支持
+- ✅ 支持所有流式响应事件类型
+- ✅ 实现工具名称自动缩短和还原
+- ✅ 支持工具调用（Function Calling）
+- ✅ 支持推理内容（Reasoning Content）
+- ✅ 支持结构化输出（JSON Schema）
+- ✅ 自动参数过滤和格式转换
+- ✅ 完整的错误处理和重试机制
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
 
 ## 许可证
 
@@ -446,8 +672,5 @@ MIT License
 ## 致谢
 
 - 原项目：[lulistart/gpt2api-node](https://github.com/lulistart/gpt2api-node)
+- 参考实现：[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
 - 感谢所有贡献者的支持
-
-## 相关项目
-
-- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
