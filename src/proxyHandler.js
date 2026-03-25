@@ -754,17 +754,56 @@ class ProxyHandler {
   }
 
   /**
-   * 直通转发 /v1/responses — 不做格式转换，供 Codex CLI 直接接入
+   * 直通转发 /v1/responses — 供 Codex CLI 直接接入，做最小转换
    */
   async handlePassthrough(req, res) {
     try {
       const accessToken = await this.tokenManager.getValidToken();
-      // Ensure required fields are present, but don't override user's stream preference
+
+      // 构建请求体，删除 Codex 不支持的参数
+      const {
+        max_output_tokens,
+        max_completion_tokens,
+        temperature,
+        top_p,
+        truncation,
+        context_management,
+        user,
+        service_tier,
+        ...rest
+      } = req.body;
+
       const requestBody = {
-        instructions: req.body.instructions || '',
+        instructions: rest.instructions || '',
         store: false,
-        ...req.body
+        parallel_tool_calls: true,
+        include: ['reasoning.encrypted_content'],
+        ...rest
       };
+
+      // 只保留 service_tier 如果是 "priority"
+      if (service_tier === 'priority') {
+        requestBody.service_tier = service_tier;
+      }
+
+      // 转换 input 中的 system role 为 developer
+      if (Array.isArray(requestBody.input)) {
+        requestBody.input = requestBody.input.map(item => {
+          if (item.type === 'message' && item.role === 'system') {
+            return { ...item, role: 'developer' };
+          }
+          return item;
+        });
+      }
+
+      // 规范化工具类型
+      if (requestBody.tools) {
+        requestBody.tools = this.normalizeTools(requestBody.tools);
+      }
+      if (requestBody.tool_choice) {
+        requestBody.tool_choice = this.normalizeToolChoice(requestBody.tool_choice);
+      }
+
       const clientWantsStream = req.body.stream !== false;
 
       const headers = {
