@@ -158,13 +158,37 @@ class ProxyHandler {
       include: ['reasoning.encrypted_content']
     };
 
-    // 处理 tools 和 tool_choice，并规范化工具类型
+    // 处理 tools - 需要扁平化 function 字段
     if (rest.tools !== undefined) {
-      codexRequest.tools = this.normalizeTools(rest.tools);
+      const normalizedTools = this.normalizeTools(rest.tools);
+      codexRequest.tools = normalizedTools.map(tool => {
+        if (tool.type === 'function' && tool.function) {
+          // 扁平化：将 function 对象的字段提升到顶层
+          return {
+            type: 'function',
+            name: tool.function.name,
+            description: tool.function.description,
+            parameters: tool.function.parameters,
+            ...(tool.function.strict !== undefined && { strict: tool.function.strict })
+          };
+        }
+        // 非 function 类型的工具直接传递
+        return tool;
+      });
     }
     // 传递 tool_choice（包括 "auto"）
     if (rest.tool_choice !== undefined) {
-      codexRequest.tool_choice = this.normalizeToolChoice(rest.tool_choice);
+      if (typeof rest.tool_choice === 'string') {
+        codexRequest.tool_choice = rest.tool_choice;
+      } else if (rest.tool_choice.type === 'function' && rest.tool_choice.function) {
+        // 扁平化 function tool_choice
+        codexRequest.tool_choice = {
+          type: 'function',
+          name: rest.tool_choice.function.name
+        };
+      } else {
+        codexRequest.tool_choice = this.normalizeToolChoice(rest.tool_choice);
+      }
     }
 
     // 处理 response_format
