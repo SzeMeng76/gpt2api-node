@@ -110,38 +110,70 @@ class ProxyHandler {
       ...rest
     } = openaiRequest;
 
-    // 转换消息格式 - system 消息转为 developer 角色
-    const input = messages.map(msg => {
-      let role = msg.role;
+    // 转换消息格式 - 处理所有消息类型
+    const input = [];
 
-      // system 角色转换为 developer
-      if (role === 'system') {
-        role = 'developer';
+    for (const msg of messages) {
+      const role = msg.role;
+
+      // 处理 tool 角色消息 - 转为 function_call_output
+      if (role === 'tool') {
+        input.push({
+          type: 'function_call_output',
+          call_id: msg.tool_call_id,
+          output: msg.content
+        });
+        continue;
       }
 
+      // 处理普通消息
+      const messageRole = role === 'system' ? 'developer' : role;
       const contentType = role === 'assistant' ? 'output_text' : 'input_text';
 
-      return {
+      const messageObj = {
         type: 'message',
-        role: role,
-        content: Array.isArray(msg.content)
-          ? msg.content.map(c => {
-              // 处理不同类型的内容
-              if (c.type === 'text') {
-                return { type: contentType, text: c.text || c };
-              } else if (c.type === 'image_url') {
-                // OpenAI 的 image_url 转换为 Codex 的 input_image
-                return {
-                  type: 'input_image',
-                  image_url: c.image_url?.url || c.image_url
-                };
-              } else {
-                return c;
-              }
-            })
-          : [{ type: contentType, text: msg.content }]
+        role: messageRole,
+        content: []
       };
-    });
+
+      // 处理消息内容
+      if (msg.content) {
+        if (Array.isArray(msg.content)) {
+          for (const c of msg.content) {
+            if (c.type === 'text') {
+              messageObj.content.push({ type: contentType, text: c.text });
+            } else if (c.type === 'image_url') {
+              messageObj.content.push({
+                type: 'input_image',
+                image_url: c.image_url?.url || c.image_url
+              });
+            }
+          }
+        } else if (typeof msg.content === 'string' && msg.content !== '') {
+          messageObj.content.push({ type: contentType, text: msg.content });
+        }
+      }
+
+      // 只在有内容或者不是 assistant 时才添加消息对象
+      // assistant 消息如果只有 tool_calls 没有 content，不添加空消息
+      if (role !== 'assistant' || messageObj.content.length > 0) {
+        input.push(messageObj);
+      }
+
+      // 处理 assistant 的 tool_calls - 转为独立的 function_call 对象
+      if (role === 'assistant' && msg.tool_calls) {
+        for (const tc of msg.tool_calls) {
+          if (tc.type === 'function') {
+            input.push({
+              type: 'function_call',
+              call_id: tc.id,
+              name: tc.function.name,
+              arguments: tc.function.arguments
+            });
+          }
+        }
+      }
+    }
 
     // 构建 Codex 请求 - 注意：Codex 不支持 temperature, top_p, max_tokens 等参数
     const codexRequest = {
@@ -191,7 +223,7 @@ class ProxyHandler {
       }
     }
 
-    // 处理 response_format
+    // 处理 response_format 和 text.verbosity
     if (rest.response_format !== undefined) {
       const rf = rest.response_format;
       if (rf.type === 'text') {
@@ -206,6 +238,19 @@ class ProxyHandler {
           }
         };
       }
+
+      // 如果有 text.verbosity，也要映射
+      if (rest.text?.verbosity !== undefined) {
+        if (!codexRequest.text) {
+          codexRequest.text = {};
+        }
+        codexRequest.text.verbosity = rest.text.verbosity;
+      }
+    } else if (rest.text?.verbosity !== undefined) {
+      // 只有 text.verbosity 没有 response_format 的情况
+      codexRequest.text = {
+        verbosity: rest.text.verbosity
+      };
     }
 
     return codexRequest;
