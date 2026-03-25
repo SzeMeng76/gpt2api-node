@@ -231,8 +231,11 @@ router.post('/:id/quota', async (req, res) => {
 
     console.log(`开始检查 Token ${id} 的真实额度...`);
 
-    // 使用真实的 API 调用检查额度
-    const checkResult = await quotaChecker.checkQuota(token.access_token);
+    // 获取实际使用量
+    const actualUsage = ApiLog.getTokenUsage(id);
+
+    // 使用被动检查（基于 ID Token 和使用统计）
+    const checkResult = await quotaChecker.checkQuota(token.access_token, token.id_token, actualUsage.total_tokens);
 
     if (!checkResult.success) {
       // 检查失败，更新错误状态
@@ -264,40 +267,17 @@ router.post('/:id/quota', async (req, res) => {
     // 检查成功，重置错误计数
     Token.resetErrorCount(id);
 
-    // 获取实际使用量
-    const actualUsage = ApiLog.getTokenUsage(id);
-
-    // 从 ID Token 解析订阅信息
-    let planType = 'free';
-    let accountInfo = null;
-
-    if (token.id_token) {
-      accountInfo = quotaChecker.parseIdToken(token.id_token);
-      if (accountInfo) {
-        planType = accountInfo.plan_type;
-      }
-    }
-
-    // 如果 API 返回了账号信息，使用 API 的信息
-    if (checkResult.account) {
-      planType = checkResult.account.plan_type;
-      accountInfo = checkResult.account;
-    }
-
-    // 估算额度
-    const quota = quotaChecker.estimateQuota(planType, actualUsage.total_tokens);
-
     // 更新数据库
-    Token.updateQuota(id, quota);
+    Token.updateQuota(id, checkResult.quota);
     Token.updateStatus(id, 'active', null);
 
     res.json({
       success: true,
       quota: {
-        ...quota,
-        plan_type: planType
+        ...checkResult.quota,
+        plan_type: checkResult.account?.plan_type || 'free'
       },
-      account: accountInfo,
+      account: checkResult.account,
       usage: checkResult.usage,
       message: '额度检查成功'
     });
@@ -320,8 +300,11 @@ router.post('/quota/refresh-all', async (req, res) => {
       try {
         console.log(`检查 Token ${token.id} (${token.email || token.account_id})...`);
 
-        // 使用真实的 API 调用检查额度
-        const checkResult = await quotaChecker.checkQuota(token.access_token);
+        // 获取实际使用量
+        const actualUsage = ApiLog.getTokenUsage(token.id);
+
+        // 使用被动检查（基于 ID Token 和使用统计）
+        const checkResult = await quotaChecker.checkQuota(token.access_token, token.id_token, actualUsage.total_tokens);
 
         if (!checkResult.success) {
           // 检查失败
@@ -350,28 +333,8 @@ router.post('/quota/refresh-all', async (req, res) => {
         // 检查成功
         Token.resetErrorCount(token.id);
 
-        // 获取实际使用量
-        const actualUsage = ApiLog.getTokenUsage(token.id);
-
-        // 解析订阅信息
-        let planType = 'free';
-        if (token.id_token) {
-          const accountInfo = quotaChecker.parseIdToken(token.id_token);
-          if (accountInfo) {
-            planType = accountInfo.plan_type;
-          }
-        }
-
-        // 如果 API 返回了账号信息，使用 API 的信息
-        if (checkResult.account) {
-          planType = checkResult.account.plan_type;
-        }
-
-        // 估算额度
-        const quota = quotaChecker.estimateQuota(planType, actualUsage.total_tokens);
-
         // 更新数据库
-        Token.updateQuota(token.id, quota);
+        Token.updateQuota(token.id, checkResult.quota);
         Token.updateStatus(token.id, 'active', null);
 
         successCount++;
