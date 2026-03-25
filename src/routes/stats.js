@@ -15,12 +15,26 @@ router.get('/', (req, res) => {
     const apiKeys = ApiKey.getAll();
     const tokens = Token.getAll();
     const activeTokens = tokens.filter(t => t.is_active);
-    
-    // 从 tokens 表统计总请求数
-    const totalRequests = tokens.reduce((sum, t) => sum + (t.total_requests || 0), 0);
-    const successRequests = tokens.reduce((sum, t) => sum + (t.success_requests || 0), 0);
-    const failedRequests = tokens.reduce((sum, t) => sum + (t.failed_requests || 0), 0);
-    
+
+    // 计算今日时间范围（从今天 00:00 开始）
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const timeFilter = `AND datetime(created_at) >= datetime('${todayStart.toISOString()}')`;
+
+    // 从 api_logs 统计今日请求数
+    const todayStats = db.prepare(`
+      SELECT
+        COUNT(*) as total_requests,
+        SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) as success_requests,
+        SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as failed_requests
+      FROM api_logs
+      WHERE 1=1 ${timeFilter}
+    `).get();
+
+    const totalRequests = todayStats.total_requests || 0;
+    const successRequests = todayStats.success_requests || 0;
+    const failedRequests = todayStats.failed_requests || 0;
+
     res.json({
       apiKeys: apiKeys.length,
       tokens: activeTokens.length,
