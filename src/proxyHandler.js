@@ -106,6 +106,7 @@ class ProxyHandler {
       top_k,
       max_completion_tokens,
       reasoningSummary,
+      verbosity,
       ...rest
     } = openaiRequest;
 
