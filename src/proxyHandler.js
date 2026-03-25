@@ -263,20 +263,27 @@ class ProxyHandler {
     if (isStream) {
       // 流式响应处理
       const line = codexResponse.toString().trim();
-      
+
       if (!line.startsWith('data:')) {
         return null;
       }
 
       const data = line.slice(5).trim();
-      
+
       if (data === '[DONE]') {
         return 'data: [DONE]\n\n';
       }
 
       try {
         const parsed = JSON.parse(data);
-        
+
+        // 初始化状态
+        if (!state.functionCallIndex) {
+          state.functionCallIndex = -1;
+          state.hasReceivedArgumentsDelta = false;
+          state.hasToolCallAnnounced = false;
+        }
+
         // 保存响应 ID 和创建时间
         if (parsed.type === 'response.created') {
           state.responseId = parsed.response?.id;
@@ -288,8 +295,8 @@ class ProxyHandler {
         const responseId = state.responseId || 'chatcmpl-' + Date.now();
         const createdAt = state.createdAt || Math.floor(Date.now() / 1000);
         const modelName = state.model || model;
-        
-        // 处理不同类型的事件 - 根据原项目的实现
+
+        // 处理不同类型的事件
         if (parsed.type === 'response.output_text.delta') {
           // 文本增量更新
           return `data: ${JSON.stringify({
@@ -316,18 +323,152 @@ class ProxyHandler {
               finish_reason: null
             }]
           })}\n\n`;
-        } else if (parsed.type === 'response.completed') {
-          // 提取使用信息
-          const usage = parsed.response?.usage || {};
+        } else if (parsed.type === 'response.reasoning_summary_text.done') {
+          // 推理摘要结束 - 添加换行
           return `data: ${JSON.stringify({
-            id: parsed.response_id || 'chatcmpl-' + Date.now(),
+            id: responseId,
             object: 'chat.completion.chunk',
-            created: Math.floor(Date.now() / 1000),
-            model: model,
+            created: createdAt,
+            model: modelName,
+            choices: [{
+              index: 0,
+              delta: { role: 'assistant', reasoning_content: '\n\n' },
+              finish_reason: null
+            }]
+          })}\n\n`;
+        } else if (parsed.type === 'response.output_item.added') {
+          // 工具调用开始
+          const item = parsed.item;
+          if (!item || item.type !== 'function_call') {
+            return null;
+          }
+
+          state.functionCallIndex++;
+          state.hasReceivedArgumentsDelta = false;
+          state.hasToolCallAnnounced = true;
+
+          return `data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model: modelName,
+            choices: [{
+              index: 0,
+              delta: {
+                role: 'assistant',
+                tool_calls: [{
+                  index: state.functionCallIndex,
+                  id: item.call_id,
+                  type: 'function',
+                  function: {
+                    name: item.name,
+                    arguments: ''
+                  }
+                }]
+              },
+              finish_reason: null
+            }]
+          })}\n\n`;
+        } else if (parsed.type === 'response.function_call_arguments.delta') {
+          // 工具调用参数增量
+          state.hasReceivedArgumentsDelta = true;
+
+          return `data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model: modelName,
+            choices: [{
+              index: 0,
+              delta: {
+                tool_calls: [{
+                  index: state.functionCallIndex,
+                  function: {
+                    arguments: parsed.delta || ''
+                  }
+                }]
+              },
+              finish_reason: null
+            }]
+          })}\n\n`;
+        } else if (parsed.type === 'response.function_call_arguments.done') {
+          // 工具调用参数完成
+          if (state.hasReceivedArgumentsDelta) {
+            // 参数已经通过 delta 事件发送，跳过
+            return null;
+          }
+
+          // 回退：没有收到 delta 事件，一次性发送完整参数
+          return `data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model: modelName,
+            choices: [{
+              index: 0,
+              delta: {
+                tool_calls: [{
+                  index: state.functionCallIndex,
+                  function: {
+                    arguments: parsed.arguments || ''
+                  }
+                }]
+              },
+              finish_reason: null
+            }]
+          })}\n\n`;
+        } else if (parsed.type === 'response.output_item.done') {
+          // 工具调用完成
+          const item = parsed.item;
+          if (!item || item.type !== 'function_call') {
+            return null;
+          }
+
+          if (state.hasToolCallAnnounced) {
+            // 工具调用已经通过 output_item.added 宣布，跳过
+            state.hasToolCallAnnounced = false;
+            return null;
+          }
+
+          // 回退：模型跳过了 output_item.added，现在发送完整工具调用
+          state.functionCallIndex++;
+
+          return `data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model: modelName,
+            choices: [{
+              index: 0,
+              delta: {
+                role: 'assistant',
+                tool_calls: [{
+                  index: state.functionCallIndex,
+                  id: item.call_id,
+                  type: 'function',
+                  function: {
+                    name: item.name,
+                    arguments: item.arguments || ''
+                  }
+                }]
+              },
+              finish_reason: null
+            }]
+          })}\n\n`;
+        } else if (parsed.type === 'response.completed') {
+          // 响应完成
+          const usage = parsed.response?.usage || {};
+          const finishReason = state.functionCallIndex !== -1 ? 'tool_calls' : 'stop';
+
+          return `data: ${JSON.stringify({
+            id: responseId,
+            object: 'chat.completion.chunk',
+            created: createdAt,
+            model: modelName,
             choices: [{
               index: 0,
               delta: {},
-              finish_reason: 'stop'
+              finish_reason: finishReason
             }],
             usage: {
               prompt_tokens: usage.input_tokens || 0,
@@ -397,6 +538,9 @@ class ProxyHandler {
           message.tool_calls = toolCalls;
         }
 
+        // 根据是否有工具调用决定 finish_reason
+        const finishReason = toolCalls.length > 0 ? 'tool_calls' : 'stop';
+
         return {
           id: response.id || 'chatcmpl-' + Date.now(),
           object: 'chat.completion',
@@ -405,7 +549,7 @@ class ProxyHandler {
           choices: [{
             index: 0,
             message,
-            finish_reason: response.status === 'completed' ? 'stop' : 'stop'
+            finish_reason: finishReason
           }],
           usage: {
             prompt_tokens: usage.input_tokens || 0,
