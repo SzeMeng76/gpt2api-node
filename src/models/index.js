@@ -191,3 +191,26 @@ export class ApiLog {
     };
   }
 }
+
+export class Settings {
+  static get(key, defaultValue = null) {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+    return row ? row.value : defaultValue;
+  }
+
+  static set(key, value) {
+    db.prepare(`
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP
+    `).run(key, value, value);
+  }
+
+  static getAll() {
+    return db.prepare('SELECT * FROM settings').all();
+  }
+
+  static delete(key) {
+    db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+  }
+}

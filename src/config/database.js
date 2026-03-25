@@ -136,6 +136,15 @@ export function initDatabase() {
     db.exec(`ALTER TABLE api_logs ADD COLUMN total_tokens INTEGER DEFAULT 0`);
   } catch (e) {}
 
+  // 系统设置表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   console.log('✓ 数据库表初始化完成');
 }
 

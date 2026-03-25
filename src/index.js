@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { initDatabase } from './config/database.js';
-import { Token, ApiLog } from './models/index.js';
+import { Token, ApiLog, Settings } from './models/index.js';
 import TokenManager from './tokenManager.js';
 import ProxyHandler from './proxyHandler.js';
 import { ProxyError } from './proxyHandler.js';
@@ -64,8 +64,10 @@ try {
 const tokenManagers = new Map();
 let currentTokenIndex = 0; // 轮询索引
 
-// 负载均衡策略
-const LOAD_BALANCE_STRATEGY = process.env.LOAD_BALANCE_STRATEGY || 'round-robin';
+// 获取当前负载均衡策略
+function getLoadBalanceStrategy() {
+  return Settings.get('load_balance_strategy') || process.env.LOAD_BALANCE_STRATEGY || 'round-robin';
+}
 
 // Retry config
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || '3', 10);
@@ -80,20 +82,21 @@ function getAvailableTokenManager(excludeIds = new Set()) {
   }
 
   let token;
-  
-  switch (LOAD_BALANCE_STRATEGY) {
+  const strategy = getLoadBalanceStrategy();
+
+  switch (strategy) {
     case 'random':
       // 随机策略：随机选择一个 token
       token = activeTokens[Math.floor(Math.random() * activeTokens.length)];
       break;
-      
+
     case 'least-used':
       // 最少使用策略：选择总请求数最少的 token
       token = activeTokens.reduce((min, current) => {
         return (current.total_requests || 0) < (min.total_requests || 0) ? current : min;
       });
       break;
-      
+
     case 'round-robin':
     default:
       // 轮询策略：按顺序选择下一个 token
@@ -362,16 +365,17 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   const activeTokens = Token.getActive();
   const allTokens = Token.getAll();
+  const currentStrategy = getLoadBalanceStrategy();
   const strategyNames = {
     'round-robin': '轮询',
     'random': '随机',
     'least-used': '最少使用'
   };
-  
+
   console.log('=================================');
   console.log('🚀 GPT2API Node 管理系统已启动');
   console.log(`📡 监听端口: ${PORT}`);
-  console.log(`⚖️  账号总数: ${allTokens.length} | 负载均衡: ${strategyNames[LOAD_BALANCE_STRATEGY] || LOAD_BALANCE_STRATEGY}`);
+  console.log(`⚖️  账号总数: ${allTokens.length} | 负载均衡: ${strategyNames[currentStrategy] || currentStrategy}`);
   console.log(`🔑 活跃账号: ${activeTokens.length} 个`);
   console.log('=================================');
   console.log(`\n管理后台: http://localhost:${PORT}/admin`);
