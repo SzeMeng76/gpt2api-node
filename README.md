@@ -458,6 +458,32 @@ console.log(response.choices[0].message.content);
 
 ## Token 管理
 
+### 获取 Refresh Token
+
+#### 方式一：xyhelper 插件（推荐 ⭐）
+
+最简单的方式，适合所有用户：
+
+1. 安装 [xyhelper Chrome 插件](https://github.com/xyhelper/xyhelper-chrome-login)
+2. 点击插件图标，会自动打开 ChatGPT 登录页面
+3. 登录你的 ChatGPT 账号
+4. 插件会自动获取 refresh_token
+5. 点击复制按钮，将 token 导入到本系统
+
+**优点**：
+- ✅ 一键获取，无需技术知识
+- ✅ 自动刷新，稳定可靠
+- ✅ 支持多账号管理
+
+#### 方式二：OpenAI 原生 Token（高级）
+
+适合技术用户，需要抓包获取以 `rt_` 开头的 refresh_token。
+
+**注意**：
+- 💡 系统会自动识别 token 类型（xyhelper 或 OpenAI 原生）
+- 💡 两种 token 都支持，无需手动选择刷新方式
+- 💡 推荐使用 xyhelper 插件，更简单方便
+
 ### 批量导入
 
 1. 准备 JSON 文件，格式如下：
@@ -483,9 +509,24 @@ console.log(response.choices[0].message.content);
 
 在管理后台的账号管理页面点击 **手动添加**，填写必要信息。
 
+**必填字段**：
+- `refresh_token` - 刷新令牌（支持 xyhelper 或 OpenAI 原生格式）
+- `access_token` - 访问令牌（可选，系统会自动刷新获取）
+
+**可选字段**：
+- `email` - 账号邮箱
+- `name` - 账号备注名称
+
+**提示**：如果不知道如何获取 token，请参考上方的 [获取 Refresh Token](#获取-refresh-token) 部分。
+
 ### 自动刷新
 
 服务会自动检测 token 是否过期，并在需要时自动刷新。
+
+**刷新机制**：
+- ✅ xyhelper token → 使用 xyhelper API 刷新
+- ✅ OpenAI 原生 token (rt_) → 使用 OpenAI OAuth 刷新
+- ✅ 自动识别，无需手动配置
 
 ## 环境变量配置
 
