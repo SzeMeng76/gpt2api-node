@@ -1,6 +1,7 @@
 import express from 'express';
 import { ApiLog, ApiKey, Token } from '../models/index.js';
 import { authenticateAdmin } from '../middleware/auth.js';
+import { calculateCost, formatCost } from '../pricing.js';
 import db from '../config/database.js';
 
 const router = express.Router();
@@ -40,19 +41,65 @@ router.get('/analytics', (req, res) => {
   try {
     const range = req.query.range || '24h';
     const tokens = Token.getAll();
-    
+
     const totalRequests = tokens.reduce((sum, t) => sum + (t.total_requests || 0), 0);
     const successRequests = tokens.reduce((sum, t) => sum + (t.success_requests || 0), 0);
     const failedRequests = tokens.reduce((sum, t) => sum + (t.failed_requests || 0), 0);
-    
-    // 计算平均响应时间（模拟数据，实际需要从日志计算）
-    const avgResponseTime = 150;
-    
+
+    // 从 api_logs 获取 token 使用统计
+    const tokenStats = db.prepare(`
+      SELECT
+        COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+        COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+        COALESCE(SUM(total_tokens), 0) as total_tokens
+      FROM api_logs
+      WHERE status_code >= 200 AND status_code < 300
+    `).get();
+
+    // 按模型统计费用
+    const modelCosts = db.prepare(`
+      SELECT
+        model,
+        COUNT(*) as request_count,
+        COALESCE(SUM(input_tokens), 0) as input_tokens,
+        COALESCE(SUM(output_tokens), 0) as output_tokens,
+        COALESCE(SUM(total_tokens), 0) as total_tokens
+      FROM api_logs
+      WHERE status_code >= 200 AND status_code < 300
+      GROUP BY model
+      ORDER BY total_tokens DESC
+    `).all();
+
+    // 计算每个模型的费用
+    let totalCost = 0;
+    const modelCostDetails = modelCosts.map(m => {
+      const cost = calculateCost(m.model, m.input_tokens, m.output_tokens);
+      totalCost += cost;
+      return {
+        model: m.model,
+        request_count: m.request_count,
+        input_tokens: m.input_tokens,
+        output_tokens: m.output_tokens,
+        total_tokens: m.total_tokens,
+        cost: cost,
+        cost_formatted: formatCost(cost)
+      };
+    });
+
     res.json({
       totalRequests,
       successRequests,
       failedRequests,
-      avgResponseTime
+      tokenUsage: {
+        input: tokenStats.total_input_tokens,
+        output: tokenStats.total_output_tokens,
+        total: tokenStats.total_tokens
+      },
+      estimatedCost: {
+        total: totalCost,
+        formatted: formatCost(totalCost),
+        byModel: modelCostDetails
+      }
     });
   } catch (error) {
     console.error('获取分析统计失败:', error);

@@ -916,11 +916,42 @@ async function loadAnalyticsStats() {
   try {
     const response = await fetch(`/admin/stats/analytics?range=${currentTimeRange}`);
     const data = await response.json();
-    
+
     document.getElementById('totalRequests').textContent = data.totalRequests || 0;
     document.getElementById('successRequests').textContent = data.successRequests || 0;
     document.getElementById('failedRequests').textContent = data.failedRequests || 0;
-    document.getElementById('avgResponseTime').textContent = (data.avgResponseTime || 0) + 'ms';
+
+    // Token 使用统计
+    if (data.tokenUsage) {
+      document.getElementById('inputTokens').textContent = (data.tokenUsage.input || 0).toLocaleString();
+      document.getElementById('outputTokens').textContent = (data.tokenUsage.output || 0).toLocaleString();
+      document.getElementById('totalTokensDetail').textContent = (data.tokenUsage.total || 0).toLocaleString();
+      document.getElementById('totalTokens').textContent = (data.tokenUsage.total || 0).toLocaleString();
+    }
+
+    // 估算费用
+    if (data.estimatedCost) {
+      document.getElementById('estimatedCost').textContent = data.estimatedCost.formatted || '$0.00';
+
+      // 按模型统计费用（Top 5）
+      const modelCostList = document.getElementById('modelCostList');
+      if (data.estimatedCost.byModel && data.estimatedCost.byModel.length > 0) {
+        const top5 = data.estimatedCost.byModel.slice(0, 5);
+        modelCostList.innerHTML = top5.map(m => `
+          <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-900">${escapeHtml(m.model)}</div>
+              <div class="text-xs text-gray-500">${m.request_count} 次请求 · ${m.total_tokens.toLocaleString()} tokens</div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold text-orange-600">${m.cost_formatted}</div>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        modelCostList.innerHTML = '<div class="text-center py-4 text-gray-500">暂无数据</div>';
+      }
+    }
   } catch (error) {
     console.error('加载统计数据失败:', error);
   }

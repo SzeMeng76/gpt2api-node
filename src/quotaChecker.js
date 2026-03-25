@@ -19,10 +19,9 @@ class QuotaChecker {
    * 检查 Token 的额度（基于 ID Token 和使用统计）
    * @param {string} accessToken - Access Token
    * @param {string} idToken - ID Token (可选)
-   * @param {number} actualUsage - 实际使用量
    * @param {string} dbPlanType - 数据库中存储的 plan_type (优先级最高)
    */
-  async checkQuota(accessToken, idToken, actualUsage = 0, dbPlanType = null) {
+  async checkQuota(accessToken, idToken, dbPlanType = null) {
     try {
       // 优先使用数据库中的 plan_type
       let planType = dbPlanType;
@@ -44,7 +43,7 @@ class QuotaChecker {
       planType = planType || 'free';
 
       // 根据订阅类型估算额度
-      const quota = this.estimateQuota(planType, actualUsage);
+      const quota = this.estimateQuota(planType);
 
       return {
         success: true,
@@ -133,24 +132,27 @@ class QuotaChecker {
 
   /**
    * 估算额度（基于订阅类型）
+   * 注意：ChatGPT 的额度是按时间周期重置的，不是按 token 消耗
    */
   estimateQuota(planType, actualUsage = 0) {
-    let totalQuota = 50000; // 默认免费额度
+    let totalQuota = 50000; // 默认免费额度（每3小时重置）
 
     const plan = (planType || 'free').toLowerCase();
 
     if (plan.includes('plus') || plan.includes('pro')) {
-      totalQuota = 500000;
+      totalQuota = 500000; // Plus 用户额度更高
     } else if (plan.includes('team')) {
       totalQuota = 1000000;
     } else if (plan.includes('enterprise')) {
       totalQuota = 5000000;
     }
 
+    // ChatGPT 额度是周期性重置的，不累计消耗
+    // 所以我们只返回总额度，不计算 used
     return {
       total: totalQuota,
-      used: actualUsage,
-      remaining: Math.max(0, totalQuota - actualUsage)
+      used: 0, // 不追踪累计使用，因为会自动重置
+      remaining: totalQuota // 假设总是可用
     };
   }
 }

@@ -313,7 +313,7 @@
         </div>
 
         <!-- 统计卡片 -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
             <div class="flex items-center justify-between">
               <div>
@@ -353,11 +353,53 @@
           <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-gray-500">平均响应时间</p>
-                <p class="text-2xl font-bold text-purple-600 mt-1" id="avgResponseTime">0ms</p>
+                <p class="text-sm text-gray-500">Token 使用量</p>
+                <p class="text-2xl font-bold text-purple-600 mt-1" id="totalTokens">0</p>
               </div>
               <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-clock text-purple-600"></i>
+                <i class="fas fa-coins text-purple-600"></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-gray-500">估算费用</p>
+                <p class="text-2xl font-bold text-orange-600 mt-1" id="estimatedCost">$0.00</p>
+              </div>
+              <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                <i class="fas fa-dollar-sign text-orange-600"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Token 使用详情和按模型统计 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Token 使用详情</h3>
+            <div class="space-y-3">
+              <div class="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                <span class="text-sm text-gray-600">输入 Tokens</span>
+                <span class="text-lg font-bold text-blue-600" id="inputTokens">0</span>
+              </div>
+              <div class="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                <span class="text-sm text-gray-600">输出 Tokens</span>
+                <span class="text-lg font-bold text-green-600" id="outputTokens">0</span>
+              </div>
+              <div class="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
+                <span class="text-sm text-gray-600">总计 Tokens</span>
+                <span class="text-lg font-bold text-purple-600" id="totalTokensDetail">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">按模型统计费用（Top 5）</h3>
+            <div id="modelCostList" class="space-y-2">
+              <div class="text-center py-4 text-gray-500">
+                <i class="fas fa-spinner fa-spin mr-2"></i>加载中...
               </div>
             </div>
           </div>
