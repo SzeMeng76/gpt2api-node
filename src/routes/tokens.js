@@ -2,6 +2,7 @@ import express from 'express';
 import { Token, ApiLog } from '../models/index.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import quotaChecker from '../quotaChecker.js';
+import db from '../config/database.js';
 
 const router = express.Router();
 
@@ -245,7 +246,7 @@ router.post('/batch-delete', (req, res) => {
   }
 });
 
-// 刷新 Token 额度（真实检查）
+// 手动重置 Token 额度
 router.post('/:id/quota', async (req, res) => {
   try {
     const { id } = req.params;
@@ -255,58 +256,49 @@ router.post('/:id/quota', async (req, res) => {
       return res.status(404).json({ error: 'Token 不存在' });
     }
 
-    console.log(`开始检查 Token ${id} 的真实额度...`);
+    console.log(`手动重置 Token ${id} 的额度...`);
 
-    // 使用被动检查（基于 plan_type 估算）
-    const checkResult = await quotaChecker.checkQuota(token.access_token, token.id_token, token.plan_type);
+    // 根据 plan_type 设置配额
+    const planType = token.plan_type || 'free';
+    let totalQuota = 10; // Free: 10 条消息 / 5 小时
+    let resetHours = 5;
 
-    if (!checkResult.success) {
-      // 检查失败，更新错误状态
-      Token.incrementErrorCount(id);
-      Token.updateStatus(id, checkResult.status, checkResult.error_message);
-
-      // 如果是不可重试的错误（402, 403），自动禁用
-      if (!checkResult.retryable) {
-        Token.toggleActive(id, false);
-        console.log(`Token ${id} 遇到不可恢复错误，已自动禁用`);
-      }
-
-      // 如果有重试时间，设置下次重试时间
-      if (checkResult.retry_after) {
-        const retryAfter = new Date(Date.now() + checkResult.retry_after * 1000).toISOString();
-        Token.setRetryAfter(id, retryAfter);
-      }
-
-      return res.json({
-        success: false,
-        status: checkResult.status,
-        error: checkResult.error_message,
-        error_code: checkResult.error_code,
-        retryable: checkResult.retryable,
-        auto_disabled: !checkResult.retryable
-      });
+    if (planType.includes('plus') || planType.includes('pro')) {
+      totalQuota = 160; // Plus: 160 条消息 / 3 小时
+      resetHours = 3;
+    } else if (planType.includes('team')) {
+      totalQuota = 500;
+      resetHours = 3;
+    } else if (planType.includes('enterprise')) {
+      totalQuota = 10000;
+      resetHours = 3;
     }
 
-    // 检查成功，重置错误计数
-    Token.resetErrorCount(id);
+    const nextReset = new Date(Date.now() + resetHours * 60 * 60 * 1000).toISOString();
 
-    // 更新数据库
-    Token.updateQuota(id, checkResult.quota);
-    Token.updateStatus(id, 'active', null);
+    // 重置额度
+    Token.updateQuota(id, {
+      total: totalQuota,
+      used: 0,
+      remaining: totalQuota
+    });
+
+    // 更新下次重置时间
+    db.prepare('UPDATE tokens SET quota_reset_at = ? WHERE id = ?').run(nextReset, id);
 
     res.json({
       success: true,
       quota: {
-        ...checkResult.quota,
-        plan_type: checkResult.account?.plan_type || 'free'
+        total: totalQuota,
+        used: 0,
+        remaining: totalQuota,
+        plan_type: planType
       },
-      account: checkResult.account,
-      usage: checkResult.usage,
-      message: '额度检查成功'
+      message: `额度已重置（${resetHours} 小时后自动刷新）`
     });
   } catch (error) {
-    console.error('刷新额度失败:', error);
-    res.status(500).json({ error: '刷新额度失败: ' + error.message });
+    console.error('重置额度失败:', error);
+    res.status(500).json({ error: '重置额度失败: ' + error.message });
   }
 });
 
