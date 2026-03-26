@@ -190,7 +190,7 @@ class ProxyHandler {
     let toolNameMap = {};
     if (rest.tools && Array.isArray(rest.tools)) {
       const toolNames = rest.tools
-        .filter(t => t.type === 'function' && t.function?.name)
+        .filter(t => t.type === 'function' && typeof t.function?.name === 'string')
         .map(t => t.function.name);
       if (toolNames.length > 0) {
         toolNameMap = this.buildToolNameMap(toolNames);
@@ -205,13 +205,11 @@ class ProxyHandler {
 
       // 处理 tool 角色消息 - 转为 function_call_output
       if (role === 'tool') {
-        // 验证 tool_call_id 必须是字符串
-        if (typeof msg.tool_call_id !== 'string') {
-          throw new Error(`Expected 'tool_call_id' to be a string, got ${typeof msg.tool_call_id}`);
-        }
+        // 自动转换 tool_call_id 为字符串
+        const callId = msg.tool_call_id != null ? String(msg.tool_call_id) : '';
         input.push({
           type: 'function_call_output',
-          call_id: msg.tool_call_id,
+          call_id: callId,
           output: msg.content
         });
         continue;
@@ -255,19 +253,18 @@ class ProxyHandler {
       if (role === 'assistant' && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           if (tc.type === 'function') {
-            // 验证 id 必须是字符串
-            if (typeof tc.id !== 'string') {
-              throw new Error(`Expected 'tool_calls[].id' to be a string, got ${typeof tc.id}`);
+            // 自动转换 id 和 name 为字符串
+            const callId = tc.id != null ? String(tc.id) : '';
+            const functionName = tc.function?.name != null ? String(tc.function.name) : '';
+
+            if (!functionName) {
+              throw new Error(`tool_calls[].function.name is required`);
             }
-            // 验证 function.name 必须是字符串
-            if (typeof tc.function?.name !== 'string') {
-              throw new Error(`Expected 'tool_calls[].function.name' to be a string, got ${typeof tc.function?.name}`);
-            }
-            const originalName = tc.function.name;
-            const shortenedName = toolNameMap[originalName] || originalName;
+
+            const shortenedName = toolNameMap[functionName] || functionName;
             input.push({
               type: 'function_call',
-              call_id: tc.id,
+              call_id: callId,
               name: shortenedName,
               arguments: tc.function.arguments
             });
@@ -323,11 +320,13 @@ class ProxyHandler {
       const normalizedTools = this.normalizeTools(rest.tools);
       codexRequest.tools = normalizedTools.map(tool => {
         if (tool.type === 'function' && tool.function) {
-          const originalName = tool.function.name;
-          // 验证 name 必须是字符串
-          if (typeof originalName !== 'string') {
-            throw new Error(`Expected 'function.name' to be a string, got ${typeof originalName}`);
+          // 自动转换 name 为字符串
+          const originalName = tool.function.name != null ? String(tool.function.name) : '';
+
+          if (!originalName) {
+            throw new Error(`tools[].function.name is required`);
           }
+
           const shortenedName = toolNameMap[originalName] || originalName;
           // 扁平化：将 function 对象的字段提升到顶层
           return {
@@ -347,11 +346,13 @@ class ProxyHandler {
       if (typeof rest.tool_choice === 'string') {
         codexRequest.tool_choice = rest.tool_choice;
       } else if (rest.tool_choice.type === 'function' && rest.tool_choice.function) {
-        const originalName = rest.tool_choice.function.name;
-        // 验证 name 必须是字符串
-        if (typeof originalName !== 'string') {
-          throw new Error(`Expected 'tool_choice.function.name' to be a string, got ${typeof originalName}`);
+        // 自动转换 name 为字符串
+        const originalName = rest.tool_choice.function.name != null ? String(rest.tool_choice.function.name) : '';
+
+        if (!originalName) {
+          throw new Error(`tool_choice.function.name is required`);
         }
+
         const shortenedName = toolNameMap[originalName] || originalName;
         // 扁平化 function tool_choice
         codexRequest.tool_choice = {
