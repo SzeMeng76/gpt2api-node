@@ -11,7 +11,7 @@ import TokenManager from './tokenManager.js';
 import ProxyHandler from './proxyHandler.js';
 import { ProxyError } from './proxyHandler.js';
 import { authenticateApiKey, authenticateAdmin } from './middleware/auth.js';
-import { startCleanupSchedule } from './cleanup.js';
+import { startCleanupSchedule, startQuotaResetSchedule } from './cleanup.js';
 
 // 导入路由
 import authRoutes from './routes/auth.js';
@@ -445,4 +445,7 @@ app.listen(PORT, () => {
 
   // 启动日志清理定时任务
   startCleanupSchedule();
+
+  // 启动额度刷新定时任务
+  startQuotaResetSchedule();
 });

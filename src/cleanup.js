@@ -1,6 +1,64 @@
 import db from './config/database.js';
 
 /**
+ * 重置所有过期的 token 额度
+ */
+export function resetExpiredQuotas() {
+  try {
+    const now = new Date().toISOString();
+
+    // 查找所有需要重置额度的 token
+    const tokens = db.prepare(`
+      SELECT id, plan_type, quota_reset_at
+      FROM tokens
+      WHERE is_active = 1
+      AND (quota_reset_at IS NULL OR quota_reset_at <= ?)
+    `).all(now);
+
+    if (tokens.length === 0) {
+      return 0;
+    }
+
+    let resetCount = 0;
+    const nextReset = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+
+    for (const token of tokens) {
+      const planType = token.plan_type || 'free';
+      let totalQuota = 50000;
+
+      if (planType.includes('plus') || planType.includes('pro')) {
+        totalQuota = 500000;
+      } else if (planType.includes('team')) {
+        totalQuota = 1000000;
+      } else if (planType.includes('enterprise')) {
+        totalQuota = 5000000;
+      }
+
+      // 重置额度
+      db.prepare(`
+        UPDATE tokens
+        SET quota_total = ?,
+            quota_used = 0,
+            quota_remaining = ?,
+            quota_reset_at = ?
+        WHERE id = ?
+      `).run(totalQuota, totalQuota, nextReset, token.id);
+
+      resetCount++;
+    }
+
+    if (resetCount > 0) {
+      console.log(`✓ 重置了 ${resetCount} 个账号的额度（下次重置: ${nextReset}）`);
+    }
+
+    return resetCount;
+  } catch (error) {
+    console.error('重置额度失败:', error);
+    return 0;
+  }
+}
+
+/**
  * 清理旧的 API 日志并重置账号统计（保留最近 90 天）
  */
 export function cleanupOldLogs() {
@@ -63,7 +121,26 @@ export function startCleanupSchedule() {
   console.log('✓ 日志清理定时任务已启动（每天凌晨 3 点执行）');
 }
 
+/**
+ * 启动额度刷新定时任务（每 3 小时执行一次）
+ */
+export function startQuotaResetSchedule() {
+  // 立即执行一次
+  console.log('开始初始化额度刷新...');
+  resetExpiredQuotas();
+
+  // 每 3 小时执行一次
+  setInterval(() => {
+    console.log('开始执行额度刷新任务...');
+    resetExpiredQuotas();
+  }, 3 * 60 * 60 * 1000);
+
+  console.log('✓ 额度刷新定时任务已启动（每 3 小时执行一次）');
+}
+
 export default {
   cleanupOldLogs,
-  startCleanupSchedule
+  startCleanupSchedule,
+  resetExpiredQuotas,
+  startQuotaResetSchedule
 };

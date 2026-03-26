@@ -205,6 +205,10 @@ class ProxyHandler {
 
       // 处理 tool 角色消息 - 转为 function_call_output
       if (role === 'tool') {
+        // 验证 tool_call_id 必须是字符串
+        if (typeof msg.tool_call_id !== 'string') {
+          throw new Error(`Expected 'tool_call_id' to be a string, got ${typeof msg.tool_call_id}`);
+        }
         input.push({
           type: 'function_call_output',
           call_id: msg.tool_call_id,
@@ -251,6 +255,14 @@ class ProxyHandler {
       if (role === 'assistant' && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           if (tc.type === 'function') {
+            // 验证 id 必须是字符串
+            if (typeof tc.id !== 'string') {
+              throw new Error(`Expected 'tool_calls[].id' to be a string, got ${typeof tc.id}`);
+            }
+            // 验证 function.name 必须是字符串
+            if (typeof tc.function?.name !== 'string') {
+              throw new Error(`Expected 'tool_calls[].function.name' to be a string, got ${typeof tc.function?.name}`);
+            }
             const originalName = tc.function.name;
             const shortenedName = toolNameMap[originalName] || originalName;
             input.push({
@@ -312,6 +324,10 @@ class ProxyHandler {
       codexRequest.tools = normalizedTools.map(tool => {
         if (tool.type === 'function' && tool.function) {
           const originalName = tool.function.name;
+          // 验证 name 必须是字符串
+          if (typeof originalName !== 'string') {
+            throw new Error(`Expected 'function.name' to be a string, got ${typeof originalName}`);
+          }
           const shortenedName = toolNameMap[originalName] || originalName;
           // 扁平化：将 function 对象的字段提升到顶层
           return {
@@ -332,6 +348,10 @@ class ProxyHandler {
         codexRequest.tool_choice = rest.tool_choice;
       } else if (rest.tool_choice.type === 'function' && rest.tool_choice.function) {
         const originalName = rest.tool_choice.function.name;
+        // 验证 name 必须是字符串
+        if (typeof originalName !== 'string') {
+          throw new Error(`Expected 'tool_choice.function.name' to be a string, got ${typeof originalName}`);
+        }
         const shortenedName = toolNameMap[originalName] || originalName;
         // 扁平化 function tool_choice
         codexRequest.tool_choice = {
