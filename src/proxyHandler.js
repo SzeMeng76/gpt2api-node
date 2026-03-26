@@ -1,10 +1,20 @@
 import axios from 'axios';
+import httpsProxyAgent from 'https-proxy-agent';
+
+const { HttpsProxyAgent } = httpsProxyAgent;
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 const CODEX_USER_AGENT = 'codex_cli_rs/0.116.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464';
 const CODEX_ORIGINATOR = 'codex_cli_rs';
 
 const RETRYABLE_STATUS = new Set([401, 402, 403, 429, 500, 502, 503, 504]);
+
+/**
+ * 获取代理配置（动态读取环境变量）
+ */
+function getProxyUrl() {
+  return process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+}
 
 /**
  * Proxy error with retryable flag
@@ -828,14 +838,24 @@ class ProxyHandler {
       const headers = this.buildRequestHeaders(req, accessToken);
       headers['Accept'] = 'text/event-stream';
 
+      // 构建请求配置
+      const requestConfig = {
+        headers,
+        responseType: 'stream',
+        timeout: 300000 // 5 分钟超时
+      };
+
+      // 如果配置了代理，使用代理
+      const PROXY_URL = getProxyUrl();
+      if (PROXY_URL) {
+        requestConfig.httpsAgent = new HttpsProxyAgent(PROXY_URL);
+        console.log(`使用代理: ${PROXY_URL}`);
+      }
+
       const response = await axios.post(
         `${CODEX_BASE_URL}/responses`,
         codexRequest,
-        {
-          headers,
-          responseType: 'stream',
-          timeout: 300000 // 5 分钟超时
-        }
+        requestConfig
       );
 
       // 处理流式响应
@@ -920,14 +940,24 @@ class ProxyHandler {
 
       const accessToken = await this.tokenManager.getValidToken();
 
+      // 构建请求配置
+      const requestConfig = {
+        headers: this.buildRequestHeaders(req, accessToken),
+        responseType: 'stream',
+        timeout: 300000
+      };
+
+      // 如果配置了代理，使用代理
+      const PROXY_URL = getProxyUrl();
+      if (PROXY_URL) {
+        requestConfig.httpsAgent = new HttpsProxyAgent(PROXY_URL);
+        console.log(`使用代理: ${PROXY_URL}`);
+      }
+
       const response = await axios.post(
         `${CODEX_BASE_URL}/responses`,
         codexRequest,
-        {
-          headers: this.buildRequestHeaders(req, accessToken),
-          responseType: 'stream',
-          timeout: 300000
-        }
+        requestConfig
       );
 
       // 处理流式响应数据 - 查找 response.completed 事件
@@ -1046,10 +1076,24 @@ class ProxyHandler {
 
       console.log('[Passthrough] Request body:', JSON.stringify(requestBody).slice(0, 500));
 
+      // 构建请求配置
+      const requestConfig = {
+        headers,
+        responseType: 'stream',
+        timeout: 300000
+      };
+
+      // 如果配置了代理，使用代理
+      const PROXY_URL = getProxyUrl();
+      if (PROXY_URL) {
+        requestConfig.httpsAgent = new HttpsProxyAgent(PROXY_URL);
+        console.log(`使用代理: ${PROXY_URL}`);
+      }
+
       const response = await axios.post(
         `${CODEX_BASE_URL}/responses`,
         requestBody,
-        { headers, responseType: 'stream', timeout: 300000 }
+        requestConfig
       );
 
       let usage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };

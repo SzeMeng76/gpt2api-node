@@ -28,8 +28,12 @@ function isXyhelperToken(refreshToken) {
   return refreshToken && !refreshToken.startsWith('rt_');
 }
 
-// 代理配置
-const PROXY_URL = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+/**
+ * 获取代理配置（动态读取环境变量）
+ */
+function getProxyUrl() {
+  return process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+}
 
 /**
  * Token 管理器
@@ -100,6 +104,7 @@ class TokenManager {
       };
 
       // 如果配置了代理，使用代理
+      const PROXY_URL = getProxyUrl();
       if (PROXY_URL) {
         config.httpsAgent = new HttpsProxyAgent(PROXY_URL);
         console.log(`使用代理: ${PROXY_URL}`);
