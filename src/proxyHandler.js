@@ -206,7 +206,13 @@ class ProxyHandler {
       // 处理 tool 角色消息 - 转为 function_call_output
       if (role === 'tool') {
         // 自动转换 tool_call_id 为字符串
-        const callId = msg.tool_call_id != null ? String(msg.tool_call_id) : '';
+        let callId = msg.tool_call_id != null ? String(msg.tool_call_id) : '';
+
+        // 确保 call_id 以 call_ 开头（Codex 要求）
+        if (callId && !callId.startsWith('call_')) {
+          callId = 'call_' + callId;
+        }
+
         input.push({
           type: 'function_call_output',
           call_id: callId,
@@ -254,7 +260,13 @@ class ProxyHandler {
         for (const tc of msg.tool_calls) {
           if (tc.type === 'function') {
             // 自动转换 id 和 name 为字符串
-            const callId = tc.id != null ? String(tc.id) : '';
+            let callId = tc.id != null ? String(tc.id) : '';
+
+            // 确保 call_id 以 call_ 开头（Codex 要求）
+            if (callId && !callId.startsWith('call_')) {
+              callId = 'call_' + callId;
+            }
+
             const functionName = tc.function?.name != null ? String(tc.function.name) : '';
 
             if (!functionName) {
