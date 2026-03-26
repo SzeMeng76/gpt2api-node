@@ -166,7 +166,7 @@ async function loadApiKeys() {
           </button>
         </td>
         <td class="py-4 px-4 text-sm text-gray-600">${key.usage_count || 0}</td>
-        <td class="py-4 px-4 text-sm text-gray-600">${key.last_used_at ? new Date(key.last_used_at).toLocaleString('zh-CN') : '-'}</td>
+        <td class="py-4 px-4 text-sm text-gray-600">${key.last_used_at ? new Date(key.last_used_at + 'Z').toLocaleString('zh-CN') : '-'}</td>
         <td class="py-4 px-4">
           <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${key.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
             ${key.is_active ? '启用' : '禁用'}
@@ -330,7 +330,7 @@ async function loadTokens(page = 1) {
         case 'rate_limited':
           statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"><i class="fas fa-clock mr-1"></i>速率限制</span>';
           if (nextRetryAfter) {
-            const retryTime = new Date(nextRetryAfter).toLocaleString('zh-CN');
+            const retryTime = new Date(nextRetryAfter + 'Z').toLocaleString('zh-CN');
             statusTooltip = `${statusMessage}\n下次重试: ${retryTime}`;
           } else {
             statusTooltip = statusMessage;
@@ -359,7 +359,7 @@ async function loadTokens(page = 1) {
 
       // 最后使用时间
       const lastUsedText = token.last_used_at
-        ? new Date(token.last_used_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        ? new Date(token.last_used_at + 'Z').toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
         : '-';
 
       // 是否启用
@@ -1071,7 +1071,7 @@ async function loadModelStats() {
           </span>
         </td>
         <td class="py-4 px-4 text-sm text-gray-600">${account.avgResponseTime}ms</td>
-        <td class="py-4 px-4 text-sm text-gray-500">${account.lastUsed ? new Date(account.lastUsed).toLocaleString('zh-CN') : '-'}</td>
+        <td class="py-4 px-4 text-sm text-gray-500">${account.lastUsed ? new Date(account.lastUsed + 'Z').toLocaleString('zh-CN') : '-'}</td>
       </tr>
     `).join('');
   } catch (error) {
@@ -1093,7 +1093,7 @@ async function loadLogs() {
     
     tbody.innerHTML = data.map(log => `
       <tr class="border-b border-gray-100 hover:bg-gray-50">
-        <td class="py-3 px-4 text-xs text-gray-600">${new Date(log.created_at).toLocaleString('zh-CN')}</td>
+        <td class="py-3 px-4 text-xs text-gray-600">${new Date(log.created_at + 'Z').toLocaleString('zh-CN')}</td>
         <td class="py-3 px-4 text-xs text-gray-600">${log.api_key_name || log.api_key_id || '-'}</td>
         <td class="py-3 px-4 text-xs text-gray-600">${escapeHtml(log.model || '-')}</td>
         <td class="py-3 px-4">
