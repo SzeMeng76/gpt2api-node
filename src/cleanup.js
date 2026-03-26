@@ -75,19 +75,19 @@ export function cleanupOldLogs() {
 
     if (result.changes > 0) {
       console.log(`✓ 清理了 ${result.changes} 条旧日志（${daysToKeep} 天前）`);
-    }
 
-    // 重置所有账号的请求统计（但保留额度信息，因为额度是3小时自动刷新的）
-    const resetResult = db.prepare(`
-      UPDATE tokens
-      SET total_requests = 0,
-          success_requests = 0,
-          failed_requests = 0,
-          error_count = 0
-    `).run();
+      // 只有在清理了日志后才重置统计
+      const resetResult = db.prepare(`
+        UPDATE tokens
+        SET total_requests = 0,
+            success_requests = 0,
+            failed_requests = 0,
+            error_count = 0
+      `).run();
 
-    if (resetResult.changes > 0) {
-      console.log(`✓ 重置了 ${resetResult.changes} 个账号的请求统计`);
+      if (resetResult.changes > 0) {
+        console.log(`✓ 重置了 ${resetResult.changes} 个账号的请求统计`);
+      }
     }
 
     return result.changes;
@@ -112,7 +112,7 @@ export function startCleanupSchedule() {
     }
   };
 
-  // 立即检查一次
+  // 立即检查一次（只有在有 90 天前的日志时才会清理）
   runCleanup();
 
   // 每小时检查一次
