@@ -20,9 +20,15 @@ export class User {
   }
 
   static async updatePassword(id, newPassword) {
+    // 计算本地时间（UTC + 8小时）
+    const now = new Date();
+    const localTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localTimeStr = localTime.toISOString().replace('T', ' ').substring(0, 19);
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    db.prepare('UPDATE users SET password = ?, updated_at = datetime(\'now\', \'localtime\') WHERE id = ?').run(
+    db.prepare('UPDATE users SET password = ?, updated_at = ? WHERE id = ?').run(
       hashedPassword,
+      localTimeStr,
       id
     );
   }
@@ -51,7 +57,12 @@ export class ApiKey {
   }
 
   static updateUsage(id) {
-    db.prepare('UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = datetime(\'now\', \'localtime\') WHERE id = ?').run(id);
+    // 计算本地时间（UTC + 8小时）
+    const now = new Date();
+    const localTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localTimeStr = localTime.toISOString().replace('T', ' ').substring(0, 19);
+
+    db.prepare('UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = ? WHERE id = ?').run(localTimeStr, id);
   }
 
   static toggleActive(id, isActive) {
@@ -116,37 +127,48 @@ export class Token {
   }
 
   static updateUsage(id, success = true) {
+    // 计算本地时间（UTC + 8小时）
+    const now = new Date();
+    const localTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localTimeStr = localTime.toISOString().replace('T', ' ').substring(0, 19);
+
     if (success) {
       db.prepare(`
         UPDATE tokens
         SET total_requests = total_requests + 1,
             success_requests = success_requests + 1,
-            last_used_at = datetime('now', 'localtime')
+            last_used_at = ?
         WHERE id = ?
-      `).run(id);
+      `).run(localTimeStr, id);
     } else {
       db.prepare(`
         UPDATE tokens
         SET total_requests = total_requests + 1,
             failed_requests = failed_requests + 1,
-            last_used_at = datetime('now', 'localtime')
+            last_used_at = ?
         WHERE id = ?
-      `).run(id);
+      `).run(localTimeStr, id);
     }
   }
 
   static updateQuota(id, quota) {
+    // 计算本地时间（UTC + 8小时）
+    const now = new Date();
+    const localTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localTimeStr = localTime.toISOString().replace('T', ' ').substring(0, 19);
+
     db.prepare(`
       UPDATE tokens
       SET quota_total = ?,
           quota_used = ?,
           quota_remaining = ?,
-          last_quota_check = datetime('now', 'localtime')
+          last_quota_check = ?
       WHERE id = ?
     `).run(
       quota.total || 0,
       quota.used || 0,
       quota.remaining || 0,
+      localTimeStr,
       id
     );
   }
@@ -198,22 +220,32 @@ export class Token {
   }
 
   static updateStatus(id, status, statusMessage = null) {
+    // 计算本地时间（UTC + 8小时）
+    const now = new Date();
+    const localTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localTimeStr = localTime.toISOString().replace('T', ' ').substring(0, 19);
+
     db.prepare(`
       UPDATE tokens
       SET status = ?,
           status_message = ?,
-          updated_at = datetime('now', 'localtime')
+          updated_at = ?
       WHERE id = ?
-    `).run(status, statusMessage, id);
+    `).run(status, statusMessage, localTimeStr, id);
   }
 
   static incrementErrorCount(id) {
+    // 计算本地时间（UTC + 8小时）
+    const now = new Date();
+    const localTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localTimeStr = localTime.toISOString().replace('T', ' ').substring(0, 19);
+
     db.prepare(`
       UPDATE tokens
       SET error_count = error_count + 1,
-          last_error_at = datetime('now', 'localtime')
+          last_error_at = ?
       WHERE id = ?
-    `).run(id);
+    `).run(localTimeStr, id);
   }
 
   static resetErrorCount(id) {
@@ -299,11 +331,16 @@ export class Settings {
   }
 
   static set(key, value) {
+    // 计算本地时间（UTC + 8小时）
+    const now = new Date();
+    const localTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localTimeStr = localTime.toISOString().replace('T', ' ').substring(0, 19);
+
     db.prepare(`
       INSERT INTO settings (key, value, updated_at)
-      VALUES (?, ?, datetime('now', 'localtime'))
-      ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now', 'localtime')
-    `).run(key, value, value);
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+    `).run(key, value, localTimeStr, value, localTimeStr);
   }
 
   static getAll() {
