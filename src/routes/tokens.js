@@ -304,58 +304,47 @@ router.post('/:id/quota', async (req, res) => {
   }
 });
 
-// 批量刷新所有 Token 额度（真实检查）
+// 批量重置所有 Token 额度
 router.post('/quota/refresh-all', async (req, res) => {
   try {
     const tokens = Token.getAll();
     let successCount = 0;
-    let failedCount = 0;
-    let disabledCount = 0;
-    const errors = [];
 
     for (const token of tokens) {
       try {
-        console.log(`检查 Token ${token.id} (${token.email || token.account_id})...`);
+        console.log(`重置 Token ${token.id} (${token.email || token.account_id})...`);
 
-        // 使用被动检查（基于 plan_type 估算）
-        const checkResult = await quotaChecker.checkQuota(token.access_token, token.id_token, token.plan_type);
+        // 根据 plan_type 设置配额
+        const planType = token.plan_type || 'free';
+        let totalQuota = 10;
+        let resetHours = 5;
 
-        if (!checkResult.success) {
-          // 检查失败
-          Token.incrementErrorCount(token.id);
-          Token.updateStatus(token.id, checkResult.status, checkResult.error_message);
-
-          // 如果是不可重试的错误，自动禁用
-          if (!checkResult.retryable) {
-            Token.toggleActive(token.id, false);
-            disabledCount++;
-            errors.push(`Token ${token.id}: ${checkResult.error_message} (已自动禁用)`);
-          } else {
-            errors.push(`Token ${token.id}: ${checkResult.error_message}`);
-          }
-
-          // 设置重试时间
-          if (checkResult.retry_after) {
-            const retryAfter = new Date(Date.now() + checkResult.retry_after * 1000).toISOString();
-            Token.setRetryAfter(token.id, retryAfter);
-          }
-
-          failedCount++;
-          continue;
+        if (planType.includes('plus') || planType.includes('pro')) {
+          totalQuota = 160;
+          resetHours = 3;
+        } else if (planType.includes('team')) {
+          totalQuota = 500;
+          resetHours = 3;
+        } else if (planType.includes('enterprise')) {
+          totalQuota = 10000;
+          resetHours = 3;
         }
 
-        // 检查成功
-        Token.resetErrorCount(token.id);
+        const nextReset = new Date(Date.now() + resetHours * 60 * 60 * 1000).toISOString();
 
-        // 更新数据库
-        Token.updateQuota(token.id, checkResult.quota);
-        Token.updateStatus(token.id, 'active', null);
+        // 直接用 SQL 重置额度
+        db.prepare(`
+          UPDATE tokens
+          SET quota_total = ?,
+              quota_used = 0,
+              quota_remaining = ?,
+              quota_reset_at = ?
+          WHERE id = ?
+        `).run(totalQuota, totalQuota, nextReset, token.id);
 
         successCount++;
       } catch (error) {
-        console.error(`刷新 Token ${token.id} 额度失败:`, error);
-        failedCount++;
-        errors.push(`Token ${token.id}: ${error.message}`);
+        console.error(`重置 Token ${token.id} 额度失败:`, error);
       }
     }
 
@@ -363,14 +352,13 @@ router.post('/quota/refresh-all', async (req, res) => {
       success: true,
       total: tokens.length,
       success: successCount,
-      failed: failedCount,
-      disabled: disabledCount,
-      errors: errors.length > 0 ? errors : undefined,
-      message: `批量刷新完成：成功 ${successCount} 个，失败 ${failedCount} 个，自动禁用 ${disabledCount} 个`
+      failed: tokens.length - successCount,
+      disabled: 0,
+      message: `批量重置完成：成功 ${successCount} 个`
     });
   } catch (error) {
-    console.error('批量刷新额度失败:', error);
-    res.status(500).json({ error: '批量刷新失败: ' + error.message });
+    console.error('批量重置额度失败:', error);
+    res.status(500).json({ error: '批量重置失败: ' + error.message });
   }
 });
 
