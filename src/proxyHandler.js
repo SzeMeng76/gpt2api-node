@@ -455,7 +455,7 @@ class ProxyHandler {
         const parsed = JSON.parse(data);
 
         // 初始化状态
-        if (!state.functionCallIndex) {
+        if (state.functionCallIndex === undefined) {
           state.functionCallIndex = -1;
           state.hasReceivedArgumentsDelta = false;
           state.hasToolCallAnnounced = false;
