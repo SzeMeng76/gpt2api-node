@@ -528,6 +528,9 @@ class ProxyHandler {
           const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
           const originalName = reverseMap[item.name] || item.name;
 
+          // 确保 call_id 是字符串
+          const callId = item.call_id != null ? String(item.call_id) : '';
+
           return `data: ${JSON.stringify({
             id: responseId,
             object: 'chat.completion.chunk',
@@ -539,7 +542,7 @@ class ProxyHandler {
                 role: 'assistant',
                 tool_calls: [{
                   index: state.functionCallIndex,
-                  id: item.call_id,
+                  id: callId,
                   type: 'function',
                   function: {
                     name: originalName,
@@ -618,6 +621,9 @@ class ProxyHandler {
           const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
           const originalName = reverseMap[item.name] || item.name;
 
+          // 确保 call_id 是字符串
+          const callId = item.call_id != null ? String(item.call_id) : '';
+
           return `data: ${JSON.stringify({
             id: responseId,
             object: 'chat.completion.chunk',
@@ -629,7 +635,7 @@ class ProxyHandler {
                 role: 'assistant',
                 tool_calls: [{
                   index: state.functionCallIndex,
-                  id: item.call_id,
+                  id: callId,
                   type: 'function',
                   function: {
                     name: originalName,
@@ -702,8 +708,11 @@ class ProxyHandler {
             const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
             const originalName = reverseMap[item.name] || item.name;
 
+            // 确保 call_id 是字符串
+            const callId = item.call_id != null ? String(item.call_id) : '';
+
             toolCalls.push({
-              id: item.call_id || '',
+              id: callId,
               type: 'function',
               function: {
                 name: originalName,
