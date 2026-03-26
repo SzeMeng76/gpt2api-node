@@ -276,15 +276,17 @@ router.post('/:id/quota', async (req, res) => {
 
     const nextReset = new Date(Date.now() + resetHours * 60 * 60 * 1000).toISOString();
 
-    // 重置额度
-    Token.updateQuota(id, {
-      total: totalQuota,
-      used: 0,
-      remaining: totalQuota
-    });
+    // 直接用 SQL 重置额度
+    db.prepare(`
+      UPDATE tokens
+      SET quota_total = ?,
+          quota_used = 0,
+          quota_remaining = ?,
+          quota_reset_at = ?
+      WHERE id = ?
+    `).run(totalQuota, totalQuota, nextReset, id);
 
-    // 更新下次重置时间
-    db.prepare('UPDATE tokens SET quota_reset_at = ? WHERE id = ?').run(nextReset, id);
+    console.log(`✓ Token ${id} 额度已重置: ${totalQuota} 条消息`);
 
     res.json({
       success: true,
