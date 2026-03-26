@@ -190,8 +190,17 @@ class ProxyHandler {
     let toolNameMap = {};
     if (rest.tools && Array.isArray(rest.tools)) {
       const toolNames = rest.tools
-        .filter(t => t.type === 'function' && typeof t.function?.name === 'string')
-        .map(t => t.function.name);
+        .filter(t => {
+          if (t.type !== 'function') return false;
+          // 支持两种格式
+          const name = t.function?.name || t.name;
+          return typeof name === 'string';
+        })
+        .map(t => {
+          // 支持两种格式
+          const name = t.function?.name || t.name;
+          return String(name);
+        });
       if (toolNames.length > 0) {
         toolNameMap = this.buildToolNameMap(toolNames);
       }
@@ -331,22 +340,37 @@ class ProxyHandler {
     if (rest.tools !== undefined) {
       const normalizedTools = this.normalizeTools(rest.tools);
       codexRequest.tools = normalizedTools.map(tool => {
-        if (tool.type === 'function' && tool.function) {
-          // 自动转换 name 为字符串
-          const originalName = tool.function.name != null ? String(tool.function.name) : '';
+        if (tool.type === 'function') {
+          // 支持两种格式：嵌套格式 (tool.function.name) 和扁平格式 (tool.name)
+          let originalName, description, parameters, strict;
+
+          if (tool.function) {
+            // 嵌套格式：OpenAI 标准格式
+            originalName = tool.function.name != null ? String(tool.function.name) : '';
+            description = tool.function.description;
+            parameters = tool.function.parameters;
+            strict = tool.function.strict;
+          } else {
+            // 扁平格式：已经是 Codex 格式
+            originalName = tool.name != null ? String(tool.name) : '';
+            description = tool.description;
+            parameters = tool.parameters;
+            strict = tool.strict;
+          }
 
           if (!originalName) {
-            throw new Error(`tools[].function.name is required`);
+            throw new Error(`tools[].function.name or tools[].name is required`);
           }
 
           const shortenedName = toolNameMap[originalName] || originalName;
-          // 扁平化：将 function 对象的字段提升到顶层
+
+          // 返回扁平化格式
           return {
             type: 'function',
             name: shortenedName,
-            description: tool.function.description,
-            parameters: tool.function.parameters,
-            ...(tool.function.strict !== undefined && { strict: tool.function.strict })
+            description: description,
+            parameters: parameters,
+            ...(strict !== undefined && { strict: strict })
           };
         }
         // 非 function 类型的工具直接传递
