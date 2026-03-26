@@ -178,9 +178,8 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
       // Success — update stats with actual token usage
       Token.updateUsage(tokenId, true);
       Token.resetErrorCount(tokenId); // 成功后重置错误计数
-      if (usage && usage.total_tokens > 0) {
-        Token.consumeQuota(tokenId, usage.total_tokens);
-      }
+      // 每次请求消耗 1 个配额（按消息数量计算，不是 tokens）
+      Token.consumeQuota(tokenId, 1);
       ApiLog.create({
         api_key_id: apiKeyId,
         token_id: tokenId,
@@ -306,9 +305,8 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
 
       Token.updateUsage(tokenId, true);
       Token.resetErrorCount(tokenId); // 成功后重置错误计数
-      if (usage && usage.total_tokens > 0) {
-        Token.consumeQuota(tokenId, usage.total_tokens);
-      }
+      // 每次请求消耗 1 个配额（按消息数量计算，不是 tokens）
+      Token.consumeQuota(tokenId, 1);
       ApiLog.create({
         api_key_id: apiKeyId,
         token_id: tokenId,
@@ -439,7 +437,9 @@ app.listen(PORT, () => {
   console.log(`🔑 活跃账号: ${activeTokens.length} 个`);
   console.log('=================================');
   console.log(`\n管理后台: http://localhost:${PORT}/admin`);
-  console.log(`API 接口: http://localhost:${PORT}/v1/chat/completions`);
+  console.log(`API 接口:`);
+  console.log(`  - Chat Completions: http://localhost:${PORT}/v1/chat/completions`);
+  console.log(`  - Responses API: http://localhost:${PORT}/v1/responses`);
   console.log(`\n首次使用请运行: npm run init-db`);
   console.log(`默认账户: admin / admin123\n`);
 

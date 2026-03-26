@@ -20,19 +20,24 @@ export function resetExpiredQuotas() {
     }
 
     let resetCount = 0;
-    const nextReset = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
 
     for (const token of tokens) {
       const planType = token.plan_type || 'free';
-      let totalQuota = 50000;
+      let totalQuota = 10; // Free: 10 条消息 / 5 小时
+      let resetHours = 5; // Free 账户 5 小时刷新
 
       if (planType.includes('plus') || planType.includes('pro')) {
-        totalQuota = 500000;
+        totalQuota = 160; // Plus: 160 条消息 / 3 小时
+        resetHours = 3; // Plus 账户 3 小时刷新
       } else if (planType.includes('team')) {
-        totalQuota = 1000000;
+        totalQuota = 500; // Team: 估算更高
+        resetHours = 3;
       } else if (planType.includes('enterprise')) {
-        totalQuota = 5000000;
+        totalQuota = 10000; // Enterprise: 几乎无限
+        resetHours = 3;
       }
+
+      const nextReset = new Date(Date.now() + resetHours * 60 * 60 * 1000).toISOString();
 
       // 重置额度
       db.prepare(`
@@ -48,7 +53,7 @@ export function resetExpiredQuotas() {
     }
 
     if (resetCount > 0) {
-      console.log(`✓ 重置了 ${resetCount} 个账号的额度（下次重置: ${nextReset}）`);
+      console.log(`✓ 重置了 ${resetCount} 个账号的额度（Free: 5小时周期, Plus: 3小时周期）`);
     }
 
     return resetCount;
@@ -122,20 +127,20 @@ export function startCleanupSchedule() {
 }
 
 /**
- * 启动额度刷新定时任务（每 3 小时执行一次）
+ * 启动额度刷新定时任务（每小时检查一次）
  */
 export function startQuotaResetSchedule() {
   // 立即执行一次
   console.log('开始初始化额度刷新...');
   resetExpiredQuotas();
 
-  // 每 3 小时执行一次
+  // 每小时检查一次（支持 Free 5小时 和 Plus 3小时 的不同刷新周期）
   setInterval(() => {
     console.log('开始执行额度刷新任务...');
     resetExpiredQuotas();
-  }, 3 * 60 * 60 * 1000);
+  }, 60 * 60 * 1000);
 
-  console.log('✓ 额度刷新定时任务已启动（每 3 小时执行一次）');
+  console.log('✓ 额度刷新定时任务已启动（每小时检查一次）');
 }
 
 export default {
