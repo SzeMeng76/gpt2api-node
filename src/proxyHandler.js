@@ -528,8 +528,11 @@ class ProxyHandler {
           const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
           const originalName = reverseMap[item.name] || item.name;
 
-          // 确保 call_id 是字符串
-          const callId = item.call_id != null ? String(item.call_id) : '';
+          // 确保 call_id 是字符串，如果为空则生成默认 ID
+          let callId = item.call_id != null ? String(item.call_id) : '';
+          if (!callId) {
+            callId = 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          }
 
           return `data: ${JSON.stringify({
             id: responseId,
@@ -621,8 +624,11 @@ class ProxyHandler {
           const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
           const originalName = reverseMap[item.name] || item.name;
 
-          // 确保 call_id 是字符串
-          const callId = item.call_id != null ? String(item.call_id) : '';
+          // 确保 call_id 是字符串，如果为空则生成默认 ID
+          let callId = item.call_id != null ? String(item.call_id) : '';
+          if (!callId) {
+            callId = 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          }
 
           return `data: ${JSON.stringify({
             id: responseId,
@@ -708,8 +714,11 @@ class ProxyHandler {
             const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
             const originalName = reverseMap[item.name] || item.name;
 
-            // 确保 call_id 是字符串
-            const callId = item.call_id != null ? String(item.call_id) : '';
+            // 确保 call_id 是字符串，如果为空则生成默认 ID
+            let callId = item.call_id != null ? String(item.call_id) : '';
+            if (!callId) {
+              callId = 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }
 
             toolCalls.push({
               id: callId,
