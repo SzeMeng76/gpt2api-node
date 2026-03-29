@@ -1,5 +1,6 @@
 import axios from 'axios';
 import httpsProxyAgent from 'https-proxy-agent';
+import crypto from 'crypto';
 
 const { HttpsProxyAgent } = httpsProxyAgent;
 
@@ -37,14 +38,59 @@ class ProxyHandler {
   }
 
   /**
-   * 生成会话 ID
+   * 将字符串哈希转换为 UUID 格式
    */
-  generateSessionId() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  hashToUUID(str) {
+    const hash = crypto.createHash('md5').update(str).digest('hex');
+    // 格式化为 UUID v4: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    return `${hash.slice(0,8)}-${hash.slice(8,12)}-4${hash.slice(13,16)}-${((parseInt(hash.slice(16,18), 16) & 0x3f) | 0x80).toString(16)}${hash.slice(18,20)}-${hash.slice(20,32)}`;
+  }
+
+  /**
+   * 生成稳定的会话 ID（基于请求元数据）
+   *
+   * 优先级：
+   * 1. API Key（最稳定，推荐用于 prompt cache）
+   * 2. 客户端提供的 session_id
+   * 3. IP + User-Agent（次选）
+   * 4. 随机 UUID（兜底）
+   */
+  generateSessionId(req) {
+    // 1. 优先使用 API Key 作为稳定标识符
+    const authHeader = req.headers['authorization'];
+    if (authHeader) {
+      const apiKey = authHeader.replace(/^Bearer\s+/i, '').trim();
+      if (apiKey) {
+        const sessionId = this.hashToUUID(`apikey:${apiKey}`);
+        console.log(`[Session ID] 基于 API Key 生成稳定 session_id: ${sessionId.slice(0, 13)}...`);
+        return sessionId;
+      }
+    }
+
+    // 2. 使用客户端提供的 session_id（如果有）
+    const clientSessionId = req.headers['session_id'] || req.headers['x-session-id'];
+    if (clientSessionId) {
+      console.log(`[Session ID] 使用客户端提供的 session_id: ${clientSessionId.slice(0, 13)}...`);
+      return clientSessionId;
+    }
+
+    // 3. 使用 IP + User-Agent 组合
+    const ip = req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    if (ip && userAgent) {
+      const sessionId = this.hashToUUID(`${ip}:${userAgent}`);
+      console.log(`[Session ID] 基于 IP+UA 生成 session_id: ${sessionId.slice(0, 13)}...`);
+      return sessionId;
+    }
+
+    // 4. 兜底：生成随机 UUID
+    const randomId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       const r = Math.random() * 16 | 0;
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     });
+    console.log(`[Session ID] 生成随机 session_id: ${randomId.slice(0, 13)}...`);
+    return randomId;
   }
 
   /**
@@ -788,7 +834,7 @@ class ProxyHandler {
       'Content-Type': 'application/json',
       'User-Agent': CODEX_USER_AGENT,
       'Openai-Beta': 'responses=experimental',
-      'Session_id': this.generateSessionId()
+      'Session_id': this.generateSessionId(req)
     };
 
     // 透传客户端身份 headers（如果客户端提供）
