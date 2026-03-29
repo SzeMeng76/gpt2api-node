@@ -47,6 +47,30 @@ class ProxyHandler {
   }
 
   /**
+   * 安全地将值转换为字符串
+   * 如果值为 null 或 undefined，返回空字符串
+   *
+   * 参考 CLIProxyAPI 的 metadataString/principalString 辅助函数
+   */
+  safeString(value) {
+    return value != null ? String(value) : '';
+  }
+
+  /**
+   * 确保 call_id 格式正确（以 call_ 开头）
+   * Codex API 要求 call_id 必须以 call_ 开头
+   */
+  ensureCallIdFormat(callId) {
+    const id = this.safeString(callId);
+    if (!id) {
+      // 如果为空，生成默认 ID
+      return 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+    // 确保以 call_ 开头
+    return id.startsWith('call_') ? id : 'call_' + id;
+  }
+
+  /**
    * 生成稳定的会话 ID（基于请求元数据）
    *
    * 优先级：
@@ -270,13 +294,8 @@ class ProxyHandler {
 
       // 处理 tool 角色消息 - 转为 function_call_output
       if (role === 'tool') {
-        // 自动转换 tool_call_id 为字符串
-        let callId = msg.tool_call_id != null ? String(msg.tool_call_id) : '';
-
-        // 确保 call_id 以 call_ 开头（Codex 要求）
-        if (callId && !callId.startsWith('call_')) {
-          callId = 'call_' + callId;
-        }
+        // 自动转换 tool_call_id 为字符串并确保格式正确
+        const callId = this.ensureCallIdFormat(msg.tool_call_id);
 
         input.push({
           type: 'function_call_output',
@@ -324,15 +343,9 @@ class ProxyHandler {
       if (role === 'assistant' && msg.tool_calls) {
         for (const tc of msg.tool_calls) {
           if (tc.type === 'function') {
-            // 自动转换 id 和 name 为字符串
-            let callId = tc.id != null ? String(tc.id) : '';
-
-            // 确保 call_id 以 call_ 开头（Codex 要求）
-            if (callId && !callId.startsWith('call_')) {
-              callId = 'call_' + callId;
-            }
-
-            const functionName = tc.function?.name != null ? String(tc.function.name) : '';
+            // 自动转换 id 和 name 为字符串并确保格式正确
+            const callId = this.ensureCallIdFormat(tc.id);
+            const functionName = this.safeString(tc.function?.name);
 
             if (!functionName) {
               throw new Error(`tool_calls[].function.name is required`);
@@ -402,13 +415,13 @@ class ProxyHandler {
 
           if (tool.function) {
             // 嵌套格式：OpenAI 标准格式
-            originalName = tool.function.name != null ? String(tool.function.name) : '';
+            originalName = this.safeString(tool.function.name);
             description = tool.function.description;
             parameters = tool.function.parameters;
             strict = tool.function.strict;
           } else {
             // 扁平格式：已经是 Codex 格式
-            originalName = tool.name != null ? String(tool.name) : '';
+            originalName = this.safeString(tool.name);
             description = tool.description;
             parameters = tool.parameters;
             strict = tool.strict;
@@ -439,7 +452,7 @@ class ProxyHandler {
         codexRequest.tool_choice = rest.tool_choice;
       } else if (rest.tool_choice.type === 'function' && rest.tool_choice.function) {
         // 自动转换 name 为字符串
-        const originalName = rest.tool_choice.function.name != null ? String(rest.tool_choice.function.name) : '';
+        const originalName = this.safeString(rest.tool_choice.function.name);
 
         if (!originalName) {
           throw new Error(`tool_choice.function.name is required`);
@@ -584,11 +597,8 @@ class ProxyHandler {
           const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
           const originalName = reverseMap[item.name] || item.name;
 
-          // 确保 call_id 是字符串，如果为空则生成默认 ID
-          let callId = item.call_id != null ? String(item.call_id) : '';
-          if (!callId) {
-            callId = 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          }
+          // 确保 call_id 格式正确
+          const callId = this.ensureCallIdFormat(item.call_id);
 
           return `data: ${JSON.stringify({
             id: responseId,
@@ -680,11 +690,8 @@ class ProxyHandler {
           const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
           const originalName = reverseMap[item.name] || item.name;
 
-          // 确保 call_id 是字符串，如果为空则生成默认 ID
-          let callId = item.call_id != null ? String(item.call_id) : '';
-          if (!callId) {
-            callId = 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          }
+          // 确保 call_id 格式正确
+          const callId = this.ensureCallIdFormat(item.call_id);
 
           return `data: ${JSON.stringify({
             id: responseId,
@@ -770,11 +777,8 @@ class ProxyHandler {
             const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
             const originalName = reverseMap[item.name] || item.name;
 
-            // 确保 call_id 是字符串，如果为空则生成默认 ID
-            let callId = item.call_id != null ? String(item.call_id) : '';
-            if (!callId) {
-              callId = 'call_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            }
+            // 确保 call_id 格式正确
+            const callId = this.ensureCallIdFormat(item.call_id);
 
             toolCalls.push({
               id: callId,
