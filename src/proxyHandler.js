@@ -154,12 +154,19 @@ class ProxyHandler {
   }
 
   /**
-   * 构建工具名称缩短映射表
+   * 构建工具名称映射表（正向和反向）
+   *
+   * 一次性构建双向映射，避免重复迭代
+   * 参考 CLIProxyAPI 的优化模式
+   *
+   * @param {string[]} toolNames - 原始工具名称列表
+   * @returns {{ forward: Object, reverse: Object }} - 返回正向映射（原始->缩短）和反向映射（缩短->原始）
    */
-  buildToolNameMap(toolNames) {
+  buildToolNameMaps(toolNames) {
     const limit = 64;
     const used = new Set();
-    const map = {};
+    const forward = {};  // 原始名 -> 缩短名
+    const reverse = {};  // 缩短名 -> 原始名
 
     const makeUnique = (candidate) => {
       if (!used.has(candidate)) {
@@ -182,18 +189,31 @@ class ProxyHandler {
       }
     };
 
+    // 一次遍历同时构建正向和反向映射
     for (const name of toolNames) {
       const shortened = this.shortenToolName(name);
       const unique = makeUnique(shortened);
       used.add(unique);
-      map[name] = unique;
+
+      // 同时填充两个映射表
+      forward[name] = unique;
+      reverse[unique] = name;
     }
 
-    return map;
+    return { forward, reverse };
+  }
+
+  /**
+   * 构建工具名称缩短映射表（向后兼容）
+   * @deprecated 使用 buildToolNameMaps() 代替，可同时获取正反向映射
+   */
+  buildToolNameMap(toolNames) {
+    return this.buildToolNameMaps(toolNames).forward;
   }
 
   /**
    * 构建反向工具名称映射（缩短名 -> 原始名）
+   * @deprecated 使用 buildToolNameMaps() 代替，可同时获取正反向映射
    */
   buildReverseToolNameMap(toolNameMap) {
     const reverse = {};
@@ -593,8 +613,11 @@ class ProxyHandler {
           state.hasReceivedArgumentsDelta = false;
           state.hasToolCallAnnounced = true;
 
-          // 还原工具名称
-          const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
+          // 还原工具名称（使用缓存的反向映射）
+          if (!state.reverseToolNameMap && state.toolNameMap) {
+            state.reverseToolNameMap = this.buildReverseToolNameMap(state.toolNameMap);
+          }
+          const reverseMap = state.reverseToolNameMap || {};
           const originalName = reverseMap[item.name] || item.name;
 
           // 确保 call_id 格式正确
@@ -686,8 +709,11 @@ class ProxyHandler {
           // 回退：模型跳过了 output_item.added，现在发送完整工具调用
           state.functionCallIndex++;
 
-          // 还原工具名称
-          const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
+          // 还原工具名称（使用缓存的反向映射）
+          if (!state.reverseToolNameMap && state.toolNameMap) {
+            state.reverseToolNameMap = this.buildReverseToolNameMap(state.toolNameMap);
+          }
+          const reverseMap = state.reverseToolNameMap || {};
           const originalName = reverseMap[item.name] || item.name;
 
           // 确保 call_id 格式正确
@@ -773,8 +799,11 @@ class ProxyHandler {
               }
             }
           } else if (item.type === 'function_call') {
-            // 处理工具调用 - 还原工具名称
-            const reverseMap = this.buildReverseToolNameMap(state.toolNameMap || {});
+            // 处理工具调用 - 还原工具名称（使用缓存的反向映射）
+            if (!state.reverseToolNameMap && state.toolNameMap) {
+              state.reverseToolNameMap = this.buildReverseToolNameMap(state.toolNameMap);
+            }
+            const reverseMap = state.reverseToolNameMap || {};
             const originalName = reverseMap[item.name] || item.name;
 
             // 确保 call_id 格式正确
