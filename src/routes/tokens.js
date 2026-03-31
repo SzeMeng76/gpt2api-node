@@ -256,51 +256,38 @@ router.post('/:id/quota', async (req, res) => {
       return res.status(404).json({ error: 'Token 不存在' });
     }
 
-    console.log(`手动重置 Token ${id} 的额度...`);
+    console.log(`检查 Token ${id} 的额度...`);
 
-    // 根据 plan_type 设置配额
-    const planType = token.plan_type || 'free';
-    let totalQuota = 10; // Free: 10 条消息 / 5 小时
-    let resetHours = 5;
+    // 使用 quotaChecker 获取详细限额信息
+    const quotaResult = await quotaChecker.checkQuota(
+      token.access_token,
+      token.id_token,
+      token.plan_type
+    );
 
-    if (planType.includes('plus') || planType.includes('pro')) {
-      totalQuota = 160; // Plus: 160 条消息 / 3 小时
-      resetHours = 3;
-    } else if (planType.includes('team')) {
-      totalQuota = 500;
-      resetHours = 3;
-    } else if (planType.includes('enterprise')) {
-      totalQuota = 10000;
-      resetHours = 3;
+    if (!quotaResult.success) {
+      return res.json({
+        success: false,
+        status: quotaResult.status,
+        error: quotaResult.error_message || '额度检查失败',
+        retryable: quotaResult.retryable
+      });
     }
 
-    const nextReset = new Date(Date.now() + resetHours * 60 * 60 * 1000).toISOString();
-
-    // 直接用 SQL 重置额度
-    db.prepare(`
-      UPDATE tokens
-      SET quota_total = ?,
-          quota_used = 0,
-          quota_remaining = ?,
-          quota_reset_at = ?
-      WHERE id = ?
-    `).run(totalQuota, totalQuota, nextReset, id);
-
-    console.log(`✓ Token ${id} 额度已重置: ${totalQuota} 条消息`);
-
+    // 返回详细的限额信息（新格式）
     res.json({
       success: true,
-      quota: {
-        total: totalQuota,
-        used: 0,
-        remaining: totalQuota,
-        plan_type: planType
-      },
-      message: `额度已重置（${resetHours} 小时后自动刷新）`
+      quota: quotaResult.quota,
+      account: quotaResult.account,
+      status: quotaResult.status,
+      message: '额度检查成功'
     });
   } catch (error) {
-    console.error('重置额度失败:', error);
-    res.status(500).json({ error: '重置额度失败: ' + error.message });
+    console.error('检查额度失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '检查额度失败: ' + error.message
+    });
   }
 });
 
