@@ -77,6 +77,24 @@
   </tr>
 </table>
 
+### 🎨 现代化限额显示界面
+
+点击账号管理页面的"检查额度"按钮，会弹出精美的限额详情弹窗：
+
+**设计特点**：
+- 🎨 **渐变色卡片设计** - 参考 2026 年最新 Dashboard 设计趋势
+- 📊 **分类显示** - GPT-5/GPT-4/Codex 系列独立展示，一目了然
+- 📈 **实时进度条** - 可视化显示剩余额度百分比
+- ⏰ **重置周期标识** - 清晰标注每个限额的重置时间（3h/5h/1d/1w）
+- ✨ **Unlimited 特殊标识** - Pro 账号显示金色无限符号 ∞
+- 🎯 **响应式布局** - 移动端和桌面端完美适配
+
+**限额信息包括**：
+- **GPT-5 系列**：GPT-5, GPT-5 Thinking, o3, o4-mini
+- **GPT-4 系列**：GPT-4o, GPT-4, GPT-3.5
+- **Codex 系列**：本地消息、云端任务、每周限额
+- **平台总限制**：所有模型共享的 80 messages/3h 上限
+
 ## 功能特性
 
 ### 管理后台
@@ -93,7 +111,17 @@
 
 ### Token 管理
 - 🔄 自动 Token 刷新（支持 OpenAI 原生 + xyhelper）
-- 📊 3小时额度自动重置（模拟 ChatGPT 行为）
+- 📊 智能限额管理（2026 最新限额）
+  - **GPT-5 系列**：160 messages/3h (Plus), Unlimited (Pro)
+  - **o3/o4-mini**：100/week, 300/day (Plus)
+  - **GPT-4 系列**：80 messages/3h (GPT-4o), 40 messages/3h (GPT-4)
+  - **Codex 系列**：90 local + 30 cloud/5h (Plus)
+  - **平台总限制**：80 messages/3h 跨模型共享
+- 🎨 现代化限额显示界面
+  - 渐变色卡片设计（参考 2026 Dashboard 设计趋势）
+  - 分类显示（GPT-5/GPT-4/Codex 独立展示）
+  - 实时进度条和百分比
+  - Unlimited 账号特殊标识
 - 🔀 智能负载均衡（轮询/随机/最少使用）
 - 📈 使用统计和成功率追踪
 - 🚨 自动状态监控和错误追踪
@@ -466,6 +494,85 @@ const response = await client.chat.completions.create({
 });
 
 console.log(response.choices[0].message.content);
+```
+
+### 使用工具调用（Tools/Function Calling）
+
+如果需要使用工具（如 web_search、code_interpreter 等），需要在请求中添加 `tools` 参数：
+
+```python
+import openai
+
+client = openai.OpenAI(
+    base_url="http://localhost:3000/v1",
+    api_key="YOUR_API_KEY"
+)
+
+response = client.chat.completions.create(
+    model="gpt-5.3-codex",
+    messages=[
+        {"role": "user", "content": "搜索最新的 AI 新闻"}
+    ],
+    tools=[
+        {
+            "type": "web_search"
+        }
+    ]
+)
+
+print(response.choices[0].message.content)
+```
+
+**支持的工具类型**：
+- `web_search` - 网页搜索
+- `code_interpreter` - 代码解释器
+- `file_search` - 文件搜索
+- 自定义函数工具（Function Calling）
+
+**JavaScript 示例**：
+
+```javascript
+const response = await client.chat.completions.create({
+  model: 'gpt-5.3-codex',
+  messages: [
+    { role: 'user', content: '帮我分析这段代码的性能' }
+  ],
+  tools: [
+    {
+      type: 'code_interpreter'
+    }
+  ]
+});
+```
+
+**自定义函数工具示例**：
+
+```python
+response = client.chat.completions.create(
+    model="gpt-5.3-codex",
+    messages=[
+        {"role": "user", "content": "今天天气怎么样？"}
+    ],
+    tools=[
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "获取指定城市的天气信息",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "city": {
+                            "type": "string",
+                            "description": "城市名称"
+                        }
+                    },
+                    "required": ["city"]
+                }
+            }
+        }
+    ]
+)
 ```
 
 ## Token 管理

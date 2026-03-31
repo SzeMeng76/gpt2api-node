@@ -706,27 +706,8 @@ async function refreshTokenQuota(id) {
     if (data.success) {
       await loadTokens(currentTokenPage);
 
-      // 显示详细的额度信息
-      let message = '✅ 额度检查成功\n\n';
-
-      if (data.quota) {
-        message += `📊 额度信息:\n`;
-        message += `  总额度: ${data.quota.total.toLocaleString()}\n`;
-        message += `  已使用: ${data.quota.used.toLocaleString()}\n`;
-        message += `  剩余: ${data.quota.remaining.toLocaleString()}\n`;
-        if (data.quota.plan_type) {
-          message += `  订阅类型: ${data.quota.plan_type}\n`;
-        }
-      }
-
-      if (data.account) {
-        message += `\n👤 账号信息:\n`;
-        if (data.account.email) message += `  邮箱: ${data.account.email}\n`;
-        if (data.account.account_id) message += `  账号ID: ${data.account.account_id}\n`;
-        if (data.account.plan_type) message += `  订阅: ${data.account.plan_type}\n`;
-      }
-
-      alert(message);
+      // 显示现代化的限额弹窗
+      showQuotaModal(data);
     } else {
       // 显示错误信息
       let errorMsg = '❌ 额度检查失败\n\n';
@@ -1242,8 +1223,231 @@ function getPlanTypeBadgeClass(planType) {
   const classes = {
     'free': 'bg-gray-100 text-gray-700',
     'plus': 'bg-purple-100 text-purple-700',
+    'pro': 'bg-gradient-to-r from-yellow-100 to-orange-100 text-orange-700',
     'team': 'bg-blue-100 text-blue-700',
     'enterprise': 'bg-green-100 text-green-700'
   };
   return classes[planType] || 'bg-gray-100 text-gray-700';
+}
+
+// 现代化限额显示弹窗
+function showQuotaModal(data) {
+  const quota = data.quota || {};
+  const account = data.account || {};
+
+  // 创建弹窗容器
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm';
+  modal.onclick = (e) => {
+    if (e.target === modal) closeQuotaModal();
+  };
+
+  // 构建限额卡片HTML
+  const quotaCards = buildQuotaCards(quota);
+
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <!-- Header -->
+      <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-4 rounded-t-2xl">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold">账号限额详情</h2>
+            <p class="text-blue-100 text-sm mt-1">实时额度信息 · 自动刷新</p>
+          </div>
+          <button onclick="closeQuotaModal()" class="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition">
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Account Info -->
+      ${account.email || account.account_id ? `
+      <div class="px-6 py-4 bg-gradient-to-r from-gray-50 to-blue-50 border-b">
+        <div class="flex items-center space-x-4">
+          <div class="w-12 h-12 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
+            <i class="fas fa-user text-white text-xl"></i>
+          </div>
+          <div class="flex-1">
+            ${account.email ? `<div class="font-medium text-gray-900">${account.email}</div>` : ''}
+            ${account.account_id ? `<div class="text-sm text-gray-500">ID: ${account.account_id}</div>` : ''}
+          </div>
+          ${account.plan_type ? `
+          <span class="px-4 py-2 rounded-full text-sm font-semibold ${getPlanTypeBadgeClass(account.plan_type)}">
+            ${account.plan_type.toUpperCase()}
+          </span>
+          ` : ''}
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- Quota Cards -->
+      <div class="p-6">
+        ${quotaCards}
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 bg-gray-50 rounded-b-2xl border-t flex justify-between items-center">
+        <div class="text-sm text-gray-500">
+          <i class="fas fa-info-circle mr-1"></i>
+          限额每隔固定时间自动重置
+        </div>
+        <button onclick="closeQuotaModal()" class="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition">
+          关闭
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  document.body.style.overflow = 'hidden';
+}
+
+function buildQuotaCards(quota) {
+  let html = '';
+
+  // GPT-5 系列
+  if (quota.gpt5) {
+    html += `
+    <div class="mb-6">
+      <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+        <span class="w-2 h-6 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full mr-3"></span>
+        GPT-5 系列
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        ${buildQuotaCard('GPT-5', quota.gpt5.gpt5, 'purple', 'fa-brain')}
+        ${buildQuotaCard('GPT-5 Thinking', quota.gpt5.gpt5Thinking, 'indigo', 'fa-lightbulb')}
+        ${buildQuotaCard('o3', quota.gpt5.o3, 'blue', 'fa-robot')}
+        ${buildQuotaCard('o4-mini', quota.gpt5.o4mini, 'cyan', 'fa-microchip')}
+      </div>
+    </div>
+    `;
+  }
+
+  // GPT-4 系列
+  if (quota.gpt4) {
+    html += `
+    <div class="mb-6">
+      <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+        <span class="w-2 h-6 bg-gradient-to-b from-blue-500 to-cyan-500 rounded-full mr-3"></span>
+        GPT-4 系列
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        ${buildQuotaCard('GPT-4o', quota.gpt4.gpt4o, 'blue', 'fa-bolt')}
+        ${buildQuotaCard('GPT-4', quota.gpt4.gpt4, 'indigo', 'fa-star')}
+        ${buildQuotaCard('GPT-3.5', quota.gpt4.gpt35, 'cyan', 'fa-comments')}
+      </div>
+    </div>
+    `;
+  }
+
+  // Codex 系列
+  if (quota.codex) {
+    html += `
+    <div class="mb-6">
+      <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+        <span class="w-2 h-6 bg-gradient-to-b from-green-500 to-emerald-500 rounded-full mr-3"></span>
+        Codex 代码模型
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        ${buildQuotaCard('本地消息', quota.codex.local, 'green', 'fa-laptop-code')}
+        ${buildQuotaCard('云端任务', quota.codex.cloud, 'emerald', 'fa-cloud')}
+        ${buildQuotaCard('每周限额', quota.codex.weekly, 'teal', 'fa-calendar-week')}
+      </div>
+    </div>
+    `;
+  }
+
+  // 平台总限制
+  if (quota.platform) {
+    html += `
+    <div class="bg-gradient-to-r from-orange-50 to-red-50 rounded-xl p-4 border border-orange-200">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 bg-gradient-to-br from-orange-400 to-red-500 rounded-lg flex items-center justify-center">
+            <i class="fas fa-exclamation-triangle text-white"></i>
+          </div>
+          <div>
+            <div class="font-semibold text-gray-900">平台总限制</div>
+            <div class="text-sm text-gray-600">${quota.platform.note || 'All models combined'}</div>
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-2xl font-bold text-orange-600">${quota.platform.remaining.toLocaleString()}</div>
+          <div class="text-sm text-gray-500">/ ${quota.platform.total.toLocaleString()} · ${quota.platform.resetPeriod}</div>
+        </div>
+      </div>
+    </div>
+    `;
+  }
+
+  return html || '<div class="text-center text-gray-500 py-8">暂无限额信息</div>';
+}
+
+function buildQuotaCard(title, data, color, icon) {
+  if (!data) return '';
+
+  const percent = data.total > 0 ? Math.round((data.remaining / data.total) * 100) : 0;
+  const isUnlimited = data.total >= 999999;
+
+  // 颜色映射
+  const colors = {
+    purple: { bg: 'from-purple-500 to-pink-500', light: 'bg-purple-50', text: 'text-purple-600', bar: 'bg-purple-500' },
+    indigo: { bg: 'from-indigo-500 to-purple-500', light: 'bg-indigo-50', text: 'text-indigo-600', bar: 'bg-indigo-500' },
+    blue: { bg: 'from-blue-500 to-cyan-500', light: 'bg-blue-50', text: 'text-blue-600', bar: 'bg-blue-500' },
+    cyan: { bg: 'from-cyan-500 to-blue-500', light: 'bg-cyan-50', text: 'text-cyan-600', bar: 'bg-cyan-500' },
+    green: { bg: 'from-green-500 to-emerald-500', light: 'bg-green-50', text: 'text-green-600', bar: 'bg-green-500' },
+    emerald: { bg: 'from-emerald-500 to-teal-500', light: 'bg-emerald-50', text: 'text-emerald-600', bar: 'bg-emerald-500' },
+    teal: { bg: 'from-teal-500 to-cyan-500', light: 'bg-teal-50', text: 'text-teal-600', bar: 'bg-teal-500' }
+  };
+
+  const c = colors[color] || colors.blue;
+
+  return `
+    <div class="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center space-x-2">
+          <div class="w-8 h-8 bg-gradient-to-br ${c.bg} rounded-lg flex items-center justify-center">
+            <i class="fas ${icon} text-white text-sm"></i>
+          </div>
+          <span class="font-semibold text-gray-900">${title}</span>
+        </div>
+        ${isUnlimited ? `
+          <span class="px-2 py-1 bg-gradient-to-r from-yellow-100 to-orange-100 text-orange-700 text-xs font-bold rounded-full">
+            UNLIMITED
+          </span>
+        ` : ''}
+      </div>
+
+      ${isUnlimited ? `
+        <div class="text-center py-4">
+          <div class="text-3xl font-bold bg-gradient-to-r ${c.bg} bg-clip-text text-transparent">∞</div>
+          <div class="text-sm text-gray-500 mt-1">无限制使用</div>
+        </div>
+      ` : `
+        <div class="space-y-2">
+          <div class="flex justify-between items-baseline">
+            <span class="text-2xl font-bold ${c.text}">${data.remaining.toLocaleString()}</span>
+            <span class="text-sm text-gray-500">/ ${data.total.toLocaleString()}</span>
+          </div>
+
+          <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+            <div class="${c.bar} h-full rounded-full transition-all duration-500" style="width: ${percent}%"></div>
+          </div>
+
+          <div class="flex justify-between text-xs text-gray-500">
+            <span>${percent}% 可用</span>
+            <span><i class="fas fa-clock mr-1"></i>${data.resetPeriod}</span>
+          </div>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function closeQuotaModal() {
+  const modal = document.querySelector('.fixed.inset-0.z-50');
+  if (modal) {
+    modal.remove();
+    document.body.style.overflow = '';
+  }
 }

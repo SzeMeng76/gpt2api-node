@@ -133,26 +133,105 @@ class QuotaChecker {
   /**
    * 估算额度（基于订阅类型）
    * 注意：ChatGPT 的额度是按时间周期重置的，不是按 token 消耗
+   *
+   * 2026年最新限额（来源：OpenAI官方文档）:
+   * - GPT-5 系列：按消息数限制（每3小时重置）
+   * - o3/o4-mini：按每日/每周限制
+   * - Codex 模型：按消息数限制（每5小时滚动窗口 + 每周上限）
    */
   estimateQuota(planType, actualUsage = 0) {
-    let totalQuota = 10; // 默认免费额度（每5小时重置）
-
     const plan = (planType || 'free').toLowerCase();
 
-    if (plan.includes('plus') || plan.includes('pro')) {
-      totalQuota = 160; // Plus 用户额度更高
-    } else if (plan.includes('team')) {
-      totalQuota = 500;
+    // GPT-5 系列限额
+    let gpt5Quota = {
+      gpt5: 10,           // GPT-5: 10 messages/5h (Free)
+      gpt5Thinking: 0,    // GPT-5 Thinking: 0 (Free无权限)
+      o3: 0,              // o3: 0 (Free无权限)
+      o4mini: 0           // o4-mini: 0 (Free无权限)
+    };
+
+    // GPT-4 系列限额（每3小时）
+    let gpt4Quota = {
+      gpt4o: 80,          // GPT-4o: 80 messages/3h
+      gpt4: 40,           // GPT-4: 40 messages/3h
+      gpt35: 100          // GPT-3.5: 100 messages/3h
+    };
+
+    // Codex 模型限额（每5小时滚动窗口）
+    let codexQuota = {
+      local: 20,          // 本地消息
+      cloud: 10,          // 云端任务
+      weekly: 100         // 每周上限
+    };
+
+    // 平台总限制（所有模型共享）
+    let platformLimit = 80; // 每3小时跨模型总限制
+
+    if (plan.includes('go')) {
+      // Go Plan ($8/month)
+      gpt5Quota = { gpt5: 160, gpt5Thinking: 10, o3: 0, o4mini: 0 };
+      gpt4Quota = { gpt4o: 100, gpt4: 50, gpt35: 150 };
+      codexQuota = { local: 35, cloud: 15, weekly: 200 };
+      platformLimit = 80;
+    } else if (plan.includes('plus')) {
+      // Plus Plan ($20/month)
+      gpt5Quota = { gpt5: 160, gpt5Thinking: 3000, o3: 100, o4mini: 300 };
+      gpt4Quota = { gpt4o: 80, gpt4: 40, gpt35: 100 };
+      codexQuota = { local: 90, cloud: 30, weekly: 500 };
+      platformLimit = 80;
+    } else if (plan.includes('pro')) {
+      // Pro Plan ($200/month) - Unlimited
+      gpt5Quota = { gpt5: 999999, gpt5Thinking: 999999, o3: 999999, o4mini: 999999 };
+      gpt4Quota = { gpt4o: 999999, gpt4: 999999, gpt35: 999999 };
+      codexQuota = { local: 900, cloud: 300, weekly: 5000 };
+      platformLimit = 999999;
+    } else if (plan.includes('team') || plan.includes('business')) {
+      // Team/Business Plan (~2x Plus limits)
+      gpt5Quota = { gpt5: 160, gpt5Thinking: 3000, o3: 200, o4mini: 600 };
+      gpt4Quota = { gpt4o: 160, gpt4: 80, gpt35: 200 };
+      codexQuota = { local: 180, cloud: 60, weekly: 1000 };
+      platformLimit = 160;
     } else if (plan.includes('enterprise')) {
-      totalQuota = 10000;
+      // Enterprise - Custom/Unlimited
+      gpt5Quota = { gpt5: 999999, gpt5Thinking: 999999, o3: 999999, o4mini: 999999 };
+      gpt4Quota = { gpt4o: 999999, gpt4: 999999, gpt35: 999999 };
+      codexQuota = { local: 999999, cloud: 999999, weekly: 999999 };
+      platformLimit = 999999;
     }
 
     // ChatGPT 额度是周期性重置的，不累计消耗
-    // 所以我们只返回总额度，不计算 used
     return {
-      total: totalQuota,
-      used: 0, // 不追踪累计使用，因为会自动重置
-      remaining: totalQuota // 假设总是可用
+      // GPT-5 系列
+      gpt5: {
+        gpt5: { total: gpt5Quota.gpt5, used: 0, remaining: gpt5Quota.gpt5, resetPeriod: plan === 'free' ? '5 hours' : '3 hours' },
+        gpt5Thinking: { total: gpt5Quota.gpt5Thinking, used: 0, remaining: gpt5Quota.gpt5Thinking, resetPeriod: '1 week' },
+        o3: { total: gpt5Quota.o3, used: 0, remaining: gpt5Quota.o3, resetPeriod: '1 week' },
+        o4mini: { total: gpt5Quota.o4mini, used: 0, remaining: gpt5Quota.o4mini, resetPeriod: '1 day' }
+      },
+      // GPT-4 系列
+      gpt4: {
+        gpt4o: { total: gpt4Quota.gpt4o, used: 0, remaining: gpt4Quota.gpt4o, resetPeriod: '3 hours' },
+        gpt4: { total: gpt4Quota.gpt4, used: 0, remaining: gpt4Quota.gpt4, resetPeriod: '3 hours' },
+        gpt35: { total: gpt4Quota.gpt35, used: 0, remaining: gpt4Quota.gpt35, resetPeriod: '3 hours' }
+      },
+      // Codex 系列
+      codex: {
+        local: { total: codexQuota.local, used: 0, remaining: codexQuota.local, resetPeriod: '5 hours' },
+        cloud: { total: codexQuota.cloud, used: 0, remaining: codexQuota.cloud, resetPeriod: '5 hours' },
+        weekly: { total: codexQuota.weekly, used: 0, remaining: codexQuota.weekly, resetPeriod: '1 week' }
+      },
+      // 平台总限制
+      platform: {
+        total: platformLimit,
+        used: 0,
+        remaining: platformLimit,
+        resetPeriod: '3 hours',
+        note: 'All models combined limit'
+      },
+      // 保持向后兼容
+      total: gpt5Quota.gpt5,
+      used: 0,
+      remaining: gpt5Quota.gpt5
     };
   }
 }
