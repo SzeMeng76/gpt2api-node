@@ -328,10 +328,23 @@ async function loadTokens(page = 1) {
           statusTooltip = statusMessage;
           break;
         case 'rate_limited':
-          statusBadge = '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"><i class="fas fa-clock mr-1"></i>速率限制</span>';
+          let rateLimitText = '速率限制';
+          if (nextRetryAfter) {
+            const retryTime = new Date(nextRetryAfter);
+            const now = new Date();
+            const minutesLeft = Math.ceil((retryTime - now) / 60000);
+
+            if (minutesLeft > 0) {
+              const timeDesc = minutesLeft > 60
+                ? `${Math.ceil(minutesLeft / 60)}小时后`
+                : `${minutesLeft}分钟后`;
+              rateLimitText = `速率限制 (${timeDesc})`;
+            }
+          }
+          statusBadge = `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"><i class="fas fa-clock mr-1"></i>${rateLimitText}</span>`;
           if (nextRetryAfter) {
             const retryTime = new Date(nextRetryAfter).toLocaleString('zh-CN');
-            statusTooltip = `${statusMessage}\n下次重试: ${retryTime}`;
+            statusTooltip = `${statusMessage}\n重置时间: ${retryTime}`;
           } else {
             statusTooltip = statusMessage;
           }

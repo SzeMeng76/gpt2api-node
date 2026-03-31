@@ -218,10 +218,32 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
           Token.updateStatus(tokenId, 'forbidden', '账号被封禁或无权限');
           shouldDisable = true;
         } else if (status === 429) {
-          Token.updateStatus(tokenId, 'rate_limited', '请求频率超限');
-          // 设置重试时间（1小时后）
-          const retryAfter = new Date(Date.now() + 3600000).toISOString();
-          Token.setRetryAfter(tokenId, retryAfter);
+          // 解析 ChatGPT 返回的真实重置时间
+          const errorBody = error.response?.data;
+          let retryAfter = new Date(Date.now() + 3600000); // 默认 1 小时
+          let resetTimeDesc = '1小时';
+
+          if (errorBody?.error?.type === 'usage_limit_reached') {
+            if (errorBody.error.resets_at) {
+              // Unix 时间戳（秒）
+              retryAfter = new Date(errorBody.error.resets_at * 1000);
+              const minutesUntilReset = Math.ceil((retryAfter - Date.now()) / 60000);
+              resetTimeDesc = minutesUntilReset > 60
+                ? `${Math.ceil(minutesUntilReset / 60)}小时`
+                : `${minutesUntilReset}分钟`;
+            } else if (errorBody.error.resets_in_seconds) {
+              // 相对秒数
+              const seconds = errorBody.error.resets_in_seconds;
+              retryAfter = new Date(Date.now() + seconds * 1000);
+              resetTimeDesc = seconds > 3600
+                ? `${Math.ceil(seconds / 3600)}小时`
+                : `${Math.ceil(seconds / 60)}分钟`;
+            }
+          }
+
+          Token.updateStatus(tokenId, 'rate_limited', `请求频率超限，${resetTimeDesc}后重置`);
+          Token.setRetryAfter(tokenId, retryAfter.toISOString());
+          console.log(`Token ${tokenId} 达到限额，将在 ${retryAfter.toLocaleString()} 重置`);
         } else if (token.error_count >= MAX_ERROR_COUNT) {
           // 连续失败次数过多，自动禁用
           Token.updateStatus(tokenId, 'error', `连续失败 ${token.error_count} 次`);
@@ -344,9 +366,32 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
           Token.updateStatus(tokenId, 'forbidden', '账号被封禁或无权限');
           shouldDisable = true;
         } else if (status === 429) {
-          Token.updateStatus(tokenId, 'rate_limited', '请求频率超限');
-          const retryAfter = new Date(Date.now() + 3600000).toISOString();
-          Token.setRetryAfter(tokenId, retryAfter);
+          // 解析 ChatGPT 返回的真实重置时间
+          const errorBody = error.response?.data;
+          let retryAfter = new Date(Date.now() + 3600000); // 默认 1 小时
+          let resetTimeDesc = '1小时';
+
+          if (errorBody?.error?.type === 'usage_limit_reached') {
+            if (errorBody.error.resets_at) {
+              // Unix 时间戳（秒）
+              retryAfter = new Date(errorBody.error.resets_at * 1000);
+              const minutesUntilReset = Math.ceil((retryAfter - Date.now()) / 60000);
+              resetTimeDesc = minutesUntilReset > 60
+                ? `${Math.ceil(minutesUntilReset / 60)}小时`
+                : `${minutesUntilReset}分钟`;
+            } else if (errorBody.error.resets_in_seconds) {
+              // 相对秒数
+              const seconds = errorBody.error.resets_in_seconds;
+              retryAfter = new Date(Date.now() + seconds * 1000);
+              resetTimeDesc = seconds > 3600
+                ? `${Math.ceil(seconds / 3600)}小时`
+                : `${Math.ceil(seconds / 60)}分钟`;
+            }
+          }
+
+          Token.updateStatus(tokenId, 'rate_limited', `请求频率超限，${resetTimeDesc}后重置`);
+          Token.setRetryAfter(tokenId, retryAfter.toISOString());
+          console.log(`Token ${tokenId} 达到限额，将在 ${retryAfter.toLocaleString()} 重置`);
         } else if (token.error_count >= MAX_ERROR_COUNT) {
           Token.updateStatus(tokenId, 'error', `连续失败 ${token.error_count} 次`);
           shouldDisable = true;
