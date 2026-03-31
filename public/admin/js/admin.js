@@ -393,15 +393,30 @@ async function loadTokens(page = 1) {
         <td class="py-4 px-4 text-xs text-gray-600">${lastUsedText}</td>
         <td class="py-4 px-4">
           <div class="flex items-center space-x-2">
-            <button onclick="refreshTokenQuota(${token.id})" class="text-sm text-blue-600 hover:text-blue-800" title="刷新额度">
-              <i class="fas fa-sync-alt"></i>
+            <!-- 主要操作：查看额度（带文字） -->
+            <button onclick="refreshTokenQuota(${token.id})" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md">
+              <i class="fas fa-chart-pie mr-1.5"></i>
+              查看额度
             </button>
-            <button onclick="toggleToken(${token.id}, ${token.is_active})" class="text-sm ${token.is_active ? 'text-gray-600 hover:text-gray-900' : 'text-green-600 hover:text-green-800'}" title="${token.is_active ? '禁用' : '启用'}">
-              <i class="fas ${token.is_active ? 'fa-pause-circle' : 'fa-play-circle'}"></i>
-            </button>
-            <button onclick="deleteToken(${token.id})" class="text-sm text-red-600 hover:text-red-800" title="删除">
-              <i class="fas fa-trash-alt"></i>
-            </button>
+
+            <!-- 次要操作：下拉菜单 -->
+            <div class="relative inline-block text-left">
+              <button onclick="toggleActionMenu(${token.id})" class="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition" title="更多操作">
+                <i class="fas fa-ellipsis-v"></i>
+              </button>
+              <div id="action-menu-${token.id}" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                <div class="py-1">
+                  <button onclick="toggleToken(${token.id}, ${token.is_active}); toggleActionMenu(${token.id})" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                    <i class="fas ${token.is_active ? 'fa-pause-circle' : 'fa-play-circle'} w-5 mr-2"></i>
+                    ${token.is_active ? '禁用账号' : '启用账号'}
+                  </button>
+                  <button onclick="deleteToken(${token.id}); toggleActionMenu(${token.id})" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center">
+                    <i class="fas fa-trash-alt w-5 mr-2"></i>
+                    删除账号
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </td>
       </tr>
@@ -1451,3 +1466,28 @@ function closeQuotaModal() {
     document.body.style.overflow = '';
   }
 }
+
+// 切换操作菜单
+function toggleActionMenu(tokenId) {
+  const menu = document.getElementById(`action-menu-${tokenId}`);
+  if (!menu) return;
+
+  // 关闭其他所有菜单
+  document.querySelectorAll('[id^="action-menu-"]').forEach(m => {
+    if (m.id !== `action-menu-${tokenId}`) {
+      m.classList.add('hidden');
+    }
+  });
+
+  // 切换当前菜单
+  menu.classList.toggle('hidden');
+}
+
+// 点击外部关闭菜单
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[onclick^="toggleActionMenu"]') && !e.target.closest('[id^="action-menu-"]')) {
+    document.querySelectorAll('[id^="action-menu-"]').forEach(m => {
+      m.classList.add('hidden');
+    });
+  }
+});
