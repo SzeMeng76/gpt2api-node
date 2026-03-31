@@ -184,18 +184,22 @@ export class Token {
     if (!resetAt || now >= resetAt) {
       // 需要重置额度
       const planType = token.plan_type || 'free';
-      let totalQuota = 50000;
+      let totalQuota = 10; // Free: 10 条消息 / 5 小时
+      let resetHours = 5; // Free 账户 5 小时刷新
 
       if (planType.includes('plus') || planType.includes('pro')) {
-        totalQuota = 500000;
+        totalQuota = 160; // Plus: 160 条消息 / 3 小时
+        resetHours = 3;
       } else if (planType.includes('team')) {
-        totalQuota = 1000000;
+        totalQuota = 500;
+        resetHours = 3;
       } else if (planType.includes('enterprise')) {
-        totalQuota = 5000000;
+        totalQuota = 10000;
+        resetHours = 3;
       }
 
-      // 设置下次重置时间（3小时后）
-      const nextReset = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+      // 设置下次重置时间（根据计划类型）
+      const nextReset = new Date(now.getTime() + resetHours * 60 * 60 * 1000);
 
       db.prepare(`
         UPDATE tokens

@@ -135,16 +135,16 @@ class QuotaChecker {
    * 注意：ChatGPT 的额度是按时间周期重置的，不是按 token 消耗
    */
   estimateQuota(planType, actualUsage = 0) {
-    let totalQuota = 50000; // 默认免费额度（每3小时重置）
+    let totalQuota = 10; // 默认免费额度（每5小时重置）
 
     const plan = (planType || 'free').toLowerCase();
 
     if (plan.includes('plus') || plan.includes('pro')) {
-      totalQuota = 500000; // Plus 用户额度更高
+      totalQuota = 160; // Plus 用户额度更高
     } else if (plan.includes('team')) {
-      totalQuota = 1000000;
+      totalQuota = 500;
     } else if (plan.includes('enterprise')) {
-      totalQuota = 5000000;
+      totalQuota = 10000;
     }
 
     // ChatGPT 额度是周期性重置的，不累计消耗
