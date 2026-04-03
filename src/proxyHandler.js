@@ -998,7 +998,17 @@ class ProxyHandler {
       const status = error.response?.status || 500;
       const message = error.response?.data?.error?.message || error.message;
       const retryable = RETRYABLE_STATUS.has(status);
+
+      // 输出详细的错误信息用于调试
       console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
+      if (error.response?.data) {
+        console.error('完整错误响应:', JSON.stringify(error.response.data, null, 2));
+      }
+      if (error.config?.headers?.Authorization) {
+        const token = error.config.headers.Authorization.replace('Bearer ', '');
+        console.error(`使用的 Token (前20字符): ${token.substring(0, 20)}...`);
+      }
+
       throw new ProxyError(message, status, retryable);
     }
   }
@@ -1092,7 +1102,17 @@ class ProxyHandler {
       const status = error.response?.status || 500;
       const message = error.response?.data?.error?.message || error.message;
       const retryable = RETRYABLE_STATUS.has(status);
+
+      // 输出详细的错误信息用于调试
       console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
+      if (error.response?.data) {
+        console.error('完整错误响应:', JSON.stringify(error.response.data, null, 2));
+      }
+      if (error.config?.headers?.Authorization) {
+        const token = error.config.headers.Authorization.replace('Bearer ', '');
+        console.error(`使用的 Token (前20字符): ${token.substring(0, 20)}...`);
+      }
+
       throw new ProxyError(message, status, retryable);
     }
   }

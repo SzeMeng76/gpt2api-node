@@ -159,7 +159,15 @@ class TokenManager {
       return newTokenData;
     } catch (error) {
       const errorMsg = error.response?.data || error.message;
-      throw new Error(`Token 刷新失败: ${JSON.stringify(errorMsg)}`);
+      const status = error.response?.status;
+
+      // 输出详细的刷新失败信息
+      console.error(`Token 刷新失败 [${status || 'unknown'}]:`, JSON.stringify(errorMsg, null, 2));
+      if (error.response?.headers) {
+        console.error('响应 Headers:', error.response.headers);
+      }
+
+      throw new Error(`Token 刷新失败 [${status}]: ${JSON.stringify(errorMsg)}`);
     }
   }
 

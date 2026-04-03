@@ -264,11 +264,13 @@ app.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
       // 401/403: refresh token before next attempt
       if (status === 401 || status === 403) {
         try {
+          console.log(`尝试刷新 Token ${tokenId}...`);
           await manager.refreshToken();
-          console.log(`Token ${tokenId} refreshed, retrying...`);
+          console.log(`Token ${tokenId} 刷新成功，准备重试...`);
           triedTokenIds.delete(tokenId); // allow retry with same token after refresh
         } catch (refreshErr) {
-          console.error(`Token ${tokenId} refresh failed: ${refreshErr.message}`);
+          console.error(`Token ${tokenId} 刷新失败:`, refreshErr.message);
+          console.error('刷新错误详情:', refreshErr);
         }
       }
 
@@ -407,10 +409,13 @@ app.post('/v1/responses', authenticateApiKey, async (req, res) => {
 
       if (status === 401 || status === 403) {
         try {
+          console.log(`尝试刷新 Token ${tokenId}...`);
           await manager.refreshToken();
+          console.log(`Token ${tokenId} 刷新成功，准备重试...`);
           triedTokenIds.delete(tokenId);
         } catch (refreshErr) {
-          console.error(`Token ${tokenId} refresh failed: ${refreshErr.message}`);
+          console.error(`Token ${tokenId} 刷新失败:`, refreshErr.message);
+          console.error('刷新错误详情:', refreshErr);
         }
       }
 
