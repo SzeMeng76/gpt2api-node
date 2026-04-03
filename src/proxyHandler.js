@@ -1007,7 +1007,20 @@ class ProxyHandler {
         try {
           // 如果是 stream，读取内容
           if (typeof error.response.data.on === 'function') {
-            console.error('错误响应是 stream，尝试读取内容...');
+            console.error('错误响应是 stream，正在读取内容...');
+            let streamData = '';
+            error.response.data.on('data', (chunk) => {
+              streamData += chunk.toString();
+            });
+            error.response.data.on('end', () => {
+              console.error('Stream 错误内容:', streamData);
+              try {
+                const parsed = JSON.parse(streamData);
+                console.error('解析后的错误:', JSON.stringify(parsed, null, 2));
+              } catch (e) {
+                // 不是 JSON，直接输出
+              }
+            });
           } else if (typeof error.response.data === 'object') {
             console.error('完整错误响应:', JSON.stringify(error.response.data, null, 2));
           } else {
@@ -1125,7 +1138,20 @@ class ProxyHandler {
         try {
           // 如果是 stream，读取内容
           if (typeof error.response.data.on === 'function') {
-            console.error('错误响应是 stream，尝试读取内容...');
+            console.error('错误响应是 stream，正在读取内容...');
+            let streamData = '';
+            error.response.data.on('data', (chunk) => {
+              streamData += chunk.toString();
+            });
+            error.response.data.on('end', () => {
+              console.error('Stream 错误内容:', streamData);
+              try {
+                const parsed = JSON.parse(streamData);
+                console.error('解析后的错误:', JSON.stringify(parsed, null, 2));
+              } catch (e) {
+                // 不是 JSON，直接输出
+              }
+            });
           } else if (typeof error.response.data === 'object') {
             console.error('完整错误响应:', JSON.stringify(error.response.data, null, 2));
           } else {
