@@ -1001,9 +1001,23 @@ class ProxyHandler {
 
       // 输出详细的错误信息用于调试
       console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
+
+      // 安全地输出错误响应（避免循环引用）
       if (error.response?.data) {
-        console.error('完整错误响应:', JSON.stringify(error.response.data, null, 2));
+        try {
+          // 如果是 stream，读取内容
+          if (typeof error.response.data.on === 'function') {
+            console.error('错误响应是 stream，尝试读取内容...');
+          } else if (typeof error.response.data === 'object') {
+            console.error('完整错误响应:', JSON.stringify(error.response.data, null, 2));
+          } else {
+            console.error('错误响应:', error.response.data);
+          }
+        } catch (e) {
+          console.error('无法序列化错误响应:', e.message);
+        }
       }
+
       if (error.config?.headers?.Authorization) {
         const token = error.config.headers.Authorization.replace('Bearer ', '');
         console.error(`使用的 Token (前20字符): ${token.substring(0, 20)}...`);
@@ -1105,9 +1119,23 @@ class ProxyHandler {
 
       // 输出详细的错误信息用于调试
       console.error(`代理请求失败 [${status}${retryable ? ' retryable' : ''}]: ${message}`);
+
+      // 安全地输出错误响应（避免循环引用）
       if (error.response?.data) {
-        console.error('完整错误响应:', JSON.stringify(error.response.data, null, 2));
+        try {
+          // 如果是 stream，读取内容
+          if (typeof error.response.data.on === 'function') {
+            console.error('错误响应是 stream，尝试读取内容...');
+          } else if (typeof error.response.data === 'object') {
+            console.error('完整错误响应:', JSON.stringify(error.response.data, null, 2));
+          } else {
+            console.error('错误响应:', error.response.data);
+          }
+        } catch (e) {
+          console.error('无法序列化错误响应:', e.message);
+        }
       }
+
       if (error.config?.headers?.Authorization) {
         const token = error.config.headers.Authorization.replace('Bearer ', '');
         console.error(`使用的 Token (前20字符): ${token.substring(0, 20)}...`);
